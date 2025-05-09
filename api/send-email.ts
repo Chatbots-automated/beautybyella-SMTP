@@ -14,26 +14,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Only POST requests allowed' })
   }
 
-  const {
-    to,
-    customer_name,
-    customer_email,
-    phone,
-    shipping_address,
-    delivery_method,
-    payment_reference,
-    products,
-    total_price,
-  } = req.body
-
   try {
+    const {
+      to,
+      customer_name,
+      customer_email,
+      phone,
+      shipping_address,
+      delivery_method,
+      payment_reference,
+      products,
+      total_price,
+    } = req.body
+
+    if (!to) {
+      return res.status(400).json({ error: 'Missing recipient email (to)' })
+    }
+
     const transporter = nodemailer.createTransport({
       host: 'evispax80.hostingas.lt',
       port: 465,
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: process.env.SMTP_PASSWORD || '', // Set in Vercel dashboard securely
+        pass: 'Benukas1',
       },
     })
 
@@ -69,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   </div>
 </body>
 </html>
-    `
+`
 
     await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
@@ -80,6 +84,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ success: true })
   } catch (err: any) {
-    return res.status(500).json({ error: err.message })
+    return res.status(500).json({ error: err.message || 'Email send failed' })
   }
 }
