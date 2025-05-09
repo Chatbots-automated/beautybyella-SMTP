@@ -37,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: 'Benukas1',
+        pass: 'jDgXvgW695ndhxm7',
       },
     })
 
