@@ -1,7 +1,3 @@
-// /api/send-email.ts
-import type { VercelRequest, VercelResponse } from '@vercel/node'
-import nodemailer from 'nodemailer'
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*')
@@ -28,8 +24,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } = req.body
 
     if (!to) {
+      console.error('Missing "to" email')
       return res.status(400).json({ error: 'Missing recipient email (to)' })
     }
+
+    console.log('Preparing to send email to:', to)
+    console.log('Order details:', {
+      customer_name,
+      customer_email,
+      phone,
+      shipping_address,
+      delivery_method,
+      payment_reference,
+      products,
+      total_price,
+    })
 
     const transporter = nodemailer.createTransport({
       host: 'evispax80.hostingas.lt',
@@ -75,15 +84,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </html>
 `
 
-    await transporter.sendMail({
+   const sendResult = await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
       to,
       subject: 'Jūsų užsakymas patvirtintas!',
       html,
     })
 
+    console.log('Email sent successfully:', sendResult)
+
     return res.status(200).json({ success: true })
   } catch (err: any) {
+    console.error('Email sending failed:', err)
     return res.status(500).json({ error: err.message || 'Email send failed' })
   }
 }
