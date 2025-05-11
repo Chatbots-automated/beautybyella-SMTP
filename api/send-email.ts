@@ -77,7 +77,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         <tr>
           <td style="vertical-align: top; width: 50%;">
             <strong>Pardavėjas:</strong><br/>
-            Lietuva<br/>
+            Stiklų keitimas automobiliams, MB<br/>
+            Įmonės kodas: 305232614<br/>
+            PVM mokėtojo kodas: LT100017540118<br/>
+            Giraitės g. 60A-2, Rubežiaus k., Trakų r.<br/>
             info@beautybyella.lt
           </td>
           <td style="vertical-align: top; width: 50%;">
@@ -122,6 +125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 </body>
 </html>
 `
+
 
    const sendResult = await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
