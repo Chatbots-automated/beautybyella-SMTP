@@ -49,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       secure: true,
       auth: {
         user: 'info@beautybyella.lt', // ✅ change to new Hostinger email
-        pass: 'Mikimauzas2025',   // ✅ replace with actual password
+        pass: 'Benukas2222!',   // ✅ replace with actual password
       },
     });
 
