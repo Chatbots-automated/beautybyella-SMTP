@@ -1,16 +1,16 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
-import nodemailer from 'nodemailer' // <- this is REQUIRED
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import nodemailer from 'nodemailer';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*')
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-    return res.status(200).end()
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Only POST requests allowed' })
+    return res.status(405).json({ error: 'Only POST requests allowed' });
   }
 
   try {
@@ -24,14 +24,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payment_reference,
       products,
       total_price,
-    } = req.body
+    } = req.body;
 
     if (!to) {
-      console.error('Missing "to" email')
-      return res.status(400).json({ error: 'Missing recipient email (to)' })
+      console.error('Missing "to" email');
+      return res.status(400).json({ error: 'Missing recipient email (to)' });
     }
 
-    console.log('Preparing to send email to:', to)
+    console.log('Preparing to send email to:', to);
     console.log('Order details:', {
       customer_name,
       customer_email,
@@ -41,17 +41,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payment_reference,
       products,
       total_price,
-    })
+    });
 
     const transporter = nodemailer.createTransport({
-      host: 'evispax80.hostingas.lt',
+      host: 'smtp.hostinger.com',
       port: 465,
       secure: true,
       auth: {
-        user: 'info@beautybyella.lt',
-        pass: 'jDgXvgW695ndhxm7',
+        user: 'info@beautybyella.lt', // ✅ change to new Hostinger email
+        pass: 'Mikimauzas2025',   // ✅ replace with actual password
       },
-    })
+    });
 
     const html = `
 <!DOCTYPE html>
@@ -124,21 +124,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   </div>
 </body>
 </html>
-`
+    `;
 
-
-   const sendResult = await transporter.sendMail({
+    const sendResult = await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
       to,
       subject: 'Jūsų užsakymas patvirtintas!',
       html,
-    })
+    });
 
-    console.log('Email sent successfully:', sendResult)
-
-    return res.status(200).json({ success: true })
+    console.log('Email sent successfully:', sendResult);
+    return res.status(200).json({ success: true });
   } catch (err: any) {
-    console.error('Email sending failed:', err)
-    return res.status(500).json({ error: err.message || 'Email send failed' })
+    console.error('Email sending failed:', err);
+    return res.status(500).json({ error: err.message || 'Email send failed' });
   }
 }
