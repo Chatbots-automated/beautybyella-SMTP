@@ -33,17 +33,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Missing recipient email (to)' });
     }
 
-    // 🛠️ Fail-proof shipping address parser
+    // Fail-proof shipping address parser
     let parsedAddress = '';
     try {
       const safeString = typeof shipping_address === 'string'
         ? shipping_address.replace(/\\+"/g, '"').replace(/“|”/g, '"')
         : '';
-
       const parsed = typeof shipping_address === 'object'
         ? shipping_address
         : JSON.parse(safeString);
-
       parsedAddress = `${parsed.name}, ${parsed.address}, ${parsed.city}, ${parsed.postal_code}`;
     } catch (err) {
       console.warn('⚠️ Failed to parse shipping_address. Using raw string:', shipping_address);
@@ -51,6 +49,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     console.log('📍 Parsed address:', parsedAddress);
+
+    // PVM calculation
+    const priceExcludingVAT = +total_price / 1.21;
+    const pvmAmount = priceExcludingVAT * 0.21;
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
@@ -115,7 +117,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </table>
       <table style="width: 100%; font-size: 14px; margin-top: 15px;">
         <tr>
-          <td style="text-align: right;" colspan="1"><strong>Bendra suma:</strong></td>
+          <td style="text-align: right;"><strong>Kaina be PVM:</strong></td>
+          <td style="text-align: right;">€${priceExcludingVAT.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td style="text-align: right;"><strong>PVM (21%):</strong></td>
+          <td style="text-align: right;">€${pvmAmount.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td style="text-align: right;"><strong>Bendra suma:</strong></td>
           <td style="text-align: right;"><strong>€${(+total_price).toFixed(2)}</strong></td>
         </tr>
       </table>
