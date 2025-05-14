@@ -26,33 +26,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total_price,
     } = req.body;
 
-    if (!to) {
-      console.error('Missing "to" email');
+    console.log('📦 Raw incoming body:', JSON.stringify(req.body));
+
+    if (!to || typeof to !== 'string') {
+      console.error('❌ Missing or invalid "to" field');
       return res.status(400).json({ error: 'Missing recipient email (to)' });
     }
 
-    // 🛠️ Parse shipping_address if it's a string
+    // 🛠️ Fail-proof shipping address parser
     let parsedAddress = '';
     try {
-      const parsed = typeof shipping_address === 'string'
-        ? JSON.parse(shipping_address)
-        : shipping_address;
+      const safeString = typeof shipping_address === 'string'
+        ? shipping_address.replace(/\\+"/g, '"').replace(/“|”/g, '"')
+        : '';
+
+      const parsed = typeof shipping_address === 'object'
+        ? shipping_address
+        : JSON.parse(safeString);
 
       parsedAddress = `${parsed.name}, ${parsed.address}, ${parsed.city}, ${parsed.postal_code}`;
     } catch (err) {
-      console.warn('⚠️ Failed to parse shipping_address, using raw:', shipping_address);
-      parsedAddress = shipping_address;
+      console.warn('⚠️ Failed to parse shipping_address. Using raw string:', shipping_address);
+      parsedAddress = typeof shipping_address === 'string' ? shipping_address : '';
     }
 
-    console.log('Preparing to send email to:', to);
+    console.log('📍 Parsed address:', parsedAddress);
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
       secure: true,
       auth: {
-        user: 'info@beautybyella.lt', // ✅ update as needed
-        pass: 'Benukas2222!',         // ✅ update as needed
+        user: 'info@beautybyella.lt',
+        pass: 'Benukas2222!',
       },
     });
 
@@ -71,11 +77,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       <h2 style="color: #d81b60; font-weight: 600;">Ačiū, ${customer_name}!</h2>
       <p style="font-size: 16px;">Jūsų užsakymas sėkmingai priimtas. 🛍️</p>
     </div>
-
     <div style="padding: 0 30px 30px;">
       <h3 style="margin-bottom: 5px;">Sąskaita faktūra</h3>
       <p>Išrašymo data: ${new Date().toISOString().split('T')[0]}<br/>Užsakymo numeris: ${payment_reference}</p>
-
       <table style="width: 100%; font-size: 14px; margin-top: 20px; border-collapse: collapse;">
         <tr>
           <td style="vertical-align: top; width: 50%;">
@@ -95,7 +99,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           </td>
         </tr>
       </table>
-
       <table style="width: 100%; font-size: 14px; margin-top: 25px; border-collapse: collapse; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd;">
         <thead>
           <tr style="background-color: #f5f5f5;">
@@ -106,18 +109,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         <tbody>
           <tr>
             <td>${products}</td>
-            <td align="right">€${total_price.toFixed(2)}</td>
+            <td align="right">€${(+total_price).toFixed(2)}</td>
           </tr>
         </tbody>
       </table>
-
       <table style="width: 100%; font-size: 14px; margin-top: 15px;">
         <tr>
           <td style="text-align: right;" colspan="1"><strong>Bendra suma:</strong></td>
-          <td style="text-align: right;"><strong>€${total_price.toFixed(2)}</strong></td>
+          <td style="text-align: right;"><strong>€${(+total_price).toFixed(2)}</strong></td>
         </tr>
       </table>
-
       <p style="margin-top: 35px; font-size: 14px; color: #999;">
         Jūsų grožis – mūsų įkvėpimas.<br/>
         Su meile,<br/>
