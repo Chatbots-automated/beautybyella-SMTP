@@ -31,25 +31,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Missing recipient email (to)' });
     }
 
+    // 🛠️ Parse shipping_address if it's a string
+    let parsedAddress = '';
+    try {
+      const parsed = typeof shipping_address === 'string'
+        ? JSON.parse(shipping_address)
+        : shipping_address;
+
+      parsedAddress = `${parsed.name}, ${parsed.address}, ${parsed.city}, ${parsed.postal_code}`;
+    } catch (err) {
+      console.warn('⚠️ Failed to parse shipping_address, using raw:', shipping_address);
+      parsedAddress = shipping_address;
+    }
+
     console.log('Preparing to send email to:', to);
-    console.log('Order details:', {
-      customer_name,
-      customer_email,
-      phone,
-      shipping_address,
-      delivery_method,
-      payment_reference,
-      products,
-      total_price,
-    });
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
       secure: true,
       auth: {
-        user: 'info@beautybyella.lt', // ✅ change to new Hostinger email
-        pass: 'Benukas2222!',   // ✅ replace with actual password
+        user: 'info@beautybyella.lt', // ✅ update as needed
+        pass: 'Benukas2222!',         // ✅ update as needed
       },
     });
 
@@ -86,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <td style="vertical-align: top; width: 50%;">
             <strong>Pirkėjas:</strong><br/>
             ${customer_name}<br/>
-            ${shipping_address}<br/>
+            ${parsedAddress}<br/>
             ${customer_email}<br/>
             ${phone}
           </td>
@@ -123,8 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     </div>
   </div>
 </body>
-</html>
-    `;
+</html>`;
 
     const sendResult = await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
@@ -133,10 +135,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       html,
     });
 
-    console.log('Email sent successfully:', sendResult);
+    console.log('✅ Email sent:', sendResult);
     return res.status(200).json({ success: true });
   } catch (err: any) {
-    console.error('Email sending failed:', err);
+    console.error('❌ Email sending failed:', err);
     return res.status(500).json({ error: err.message || 'Email send failed' });
   }
 }
