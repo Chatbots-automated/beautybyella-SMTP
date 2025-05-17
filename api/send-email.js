@@ -2,7 +2,7 @@ const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const https = require('https');
 
-// fetchImageBuffer is used for both logo & font loading
+// fetchImageBuffer: helper to pull in your hosted logo
 function fetchImageBuffer(url) {
   return new Promise((resolve, reject) => {
     https.get(url, res => {
@@ -14,7 +14,7 @@ function fetchImageBuffer(url) {
   });
 }
 
-async function createInvoicePdf({
+function createInvoicePdf({
   payment_reference,
   customer_name,
   parsedAddress,
@@ -23,116 +23,128 @@ async function createInvoicePdf({
   products,
   total_price
 }) {
-  const doc = new PDFDocument({ size: 'A4', margin: 50 });
-  const buffers = [];
-  doc.on('data', c => buffers.push(c));
-  // no-op on end; we’ll concat below
+  return new Promise(async (resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const buffers = [];
+      doc.on('data', c => buffers.push(c));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-  // 1) Load & register Roboto fonts from Google’s repo
-  try {
-    const [reg, bold] = await Promise.all([
-      fetchImageBuffer('https://raw.githubusercontent.com/google/fonts/main/apache/roboto/Roboto-Regular.ttf'),
-      fetchImageBuffer('https://raw.githubusercontent.com/google/fonts/main/apache/roboto/Roboto-Bold.ttf'),
-    ]);
-    doc.registerFont('Roboto', reg);
-    doc.registerFont('Roboto-Bold', bold);
-  } catch (e) {
-    console.warn('⚠️ Could not load custom fonts, falling back to Helvetica');
-  }
+      const date = new Date().toISOString().split('T')[0];
+      const priceExcl = total_price / 1.21;
+      const vat = priceExcl * 0.21;
 
-  // 2) Draw the logo top-left
-  try {
-    const logo = await fetchImageBuffer('https://i.imgur.com/oFa7Bqt.jpeg');
-    doc.image(logo, 50, 50, { width: 80 });
-  } catch (e) {
-    console.warn('⚠️ Logo failed to load');
-  }
+      // --- Logo top-left ---
+      try {
+        const logo = await fetchImageBuffer('https://i.imgur.com/oFa7Bqt.jpeg');
+        doc.image(logo, 50, 45, { width: 80 });
+      } catch (_) {
+        // ignore
+      }
 
-  // 3) Heading centered
-  const date = new Date().toISOString().split('T')[0];
-  doc
-    .font('Roboto-Bold').fontSize(24).fillColor('#d81b60')
-    .text('SĄSKAITA FAKTŪRA', 0, 65, { align: 'center' });
-
-  // 4) Invoice meta & two-column info
-  const startY = 120;
-  doc
-    .font('Roboto').fontSize(10).fillColor('#000')
-    .text(`Data: ${date}`, 50, startY)
-    .text(`Užsakymo Nr.: ${payment_reference}`, 50, startY + 15);
-
-  // Seller (left)
-  doc
-    .font('Roboto-Bold').text('Pardavėjas:', 50, startY + 45)
-    .font('Roboto').text('Stiklų keitimas automobiliams, MB', 50, startY + 60)
-    .text('Įm. kodas: 305232614')
-    .text('PVM kodas: LT100017540118')
-    .text('Giraitės g. 60A-2, Trakų r.');
-
-  // Buyer (right)
-  doc
-    .font('Roboto-Bold').text('Pirkėjas:', 300, startY + 45)
-    .font('Roboto').text(customer_name, 300, startY + 60)
-    .text(parsedAddress)
-    .text(customer_email)
-    .text(phone);
-
-  // 5) Separator line
-  doc
-    .moveTo(50, startY + 140)
-    .lineTo(545, startY + 140)
-    .strokeColor('#eeeeee')
-    .lineWidth(1)
-    .stroke();
-
-  // 6) Products table header
-  const tableTop = startY + 155;
-  const colX = { item: 50, qty: 300, unit: 350, sum: 450 };
-  doc
-    .font('Roboto-Bold').fontSize(12).fillColor('#d81b60')
-    .text('Prekė', colX.item, tableTop)
-    .text('Kiekis', colX.qty, tableTop)
-    .text('Vnt. kaina', colX.unit, tableTop)
-    .text('Suma', colX.sum, tableTop);
-
-  // 7) Products rows
-  doc.font('Roboto').fontSize(10).fillColor('#000');
-  let y = tableTop + 20;
-  (Array.isArray(products) ? products : [{ name: products, qty: 1, price: total_price }])
-    .forEach(p => {
+      // --- Heading centered ---
       doc
-        .text(p.name, colX.item, y)
-        .text(p.qty.toString(), colX.qty, y)
-        .text(`€${parseFloat(p.price).toFixed(2)}`, colX.unit, y)
-        .text(`€${(p.qty * p.price).toFixed(2)}`, colX.sum, y);
+        .font('Helvetica-Bold')
+        .fillColor('#d81b60')
+        .fontSize(24)
+        .text('SĄSKAITA FAKTŪRA', 0, 60, { align: 'center' });
+
+      // --- Invoice info ---
+      doc
+        .font('Helvetica')
+        .fillColor('#000')
+        .fontSize(10)
+        .text(`Data: ${date}`, 50, 120)
+        .text(`Užsakymo Nr.: ${payment_reference}`, 50, 135);
+
+      // --- Seller (left) ---
+      doc
+        .font('Helvetica-Bold')
+        .text('Pardavėjas:', 50, 160)
+        .font('Helvetica')
+        .text('Stiklų keitimas automobiliams, MB', 50, 175)
+        .text('Įm. kodas: 305232614')
+        .text('PVM kodas: LT100017540118')
+        .text('Giraitės g. 60A-2, Trakų r.');
+
+      // --- Buyer (right) ---
+      doc
+        .font('Helvetica-Bold')
+        .text('Pirkėjas:', 300, 160)
+        .font('Helvetica')
+        .text(customer_name, 300, 175)
+        .text(parsedAddress)
+        .text(customer_email)
+        .text(phone);
+
+      // --- Separator ---
+      doc
+        .moveTo(50, 250)
+        .lineTo(545, 250)
+        .lineWidth(1)
+        .strokeColor('#eeeeee')
+        .stroke();
+
+      // --- Table header ---
+      const tableTop = 270;
+      const colX = { item: 50, qty: 300, unit: 380, sum: 470 };
+      doc
+        .font('Helvetica-Bold')
+        .fillColor('#d81b60')
+        .fontSize(12)
+        .text('Prekė', colX.item, tableTop)
+        .text('Kiekis', colX.qty, tableTop)
+        .text('Vnt. kaina', colX.unit, tableTop)
+        .text('Suma', colX.sum, tableTop);
+
+      // --- Table rows ---
+      doc.font('Helvetica').fillColor('#000').fontSize(10);
+      let y = tableTop + 20;
+      (Array.isArray(products) ? products : [{ name: products, qty: 1, price: total_price }])
+        .forEach(p => {
+          doc
+            .text(p.name, colX.item, y)
+            .text(p.qty.toString(), colX.qty, y)
+            .text(`€${parseFloat(p.price).toFixed(2)}`, colX.unit, y)
+            .text(`€${(p.qty * p.price).toFixed(2)}`, colX.sum, y);
+          y += 20;
+        });
+
+      // --- Totals ---
       y += 20;
-    });
+      doc
+        .font('Helvetica')
+        .fontSize(10)
+        .text('Be PVM:', colX.unit, y, { continued: true })
+        .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
+      y += 15;
+      doc
+        .text('PVM (21%):', colX.unit, y, { continued: true })
+        .text(`€${vat.toFixed(2)}`, { align: 'right' });
+      y += 15;
+      doc
+        .font('Helvetica-Bold')
+        .fillColor('#d81b60')
+        .text('Iš viso:', colX.unit, y, { continued: true })
+        .text(`€${total_price.toFixed(2)}`, { align: 'right' });
 
-  // 8) Totals box
-  const priceExcl = total_price / 1.21;
-  const vat = priceExcl * 0.21;
-  y += 20;
-  doc
-    .font('Roboto-Bold').fontSize(12).fillColor('#000')
-    .text('Be PVM:', colX.unit, y, { continued: true })
-    .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
-  y += 15;
-  doc
-    .font('Roboto').text('PVM (21%):', colX.unit, y, { continued: true })
-    .text(`€${vat.toFixed(2)}`, { align: 'right' });
-  y += 15;
-  doc
-    .font('Roboto-Bold').fillColor('#d81b60')
-    .text('Iš viso:', colX.unit, y, { continued: true })
-    .text(`€${total_price.toFixed(2)}`, { align: 'right' });
-
-  doc.end();
-  return Buffer.concat(buffers);
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
 
-// your existing handler, just swap in the new createInvoicePdf
 module.exports = async (req, res) => {
-  // ... OPTIONS / POST check ...
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(200).end();
+  }
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Only POST requests allowed' });
+  }
 
   try {
     const {
@@ -146,7 +158,9 @@ module.exports = async (req, res) => {
       total_price
     } = req.body;
 
-    const parsedAddress = String(shipping_address || '');
+    const parsedAddress = shipping_address || '';
+
+    // build PDF
     const pdfBuffer = await createInvoicePdf({
       payment_reference,
       customer_name,
@@ -156,6 +170,20 @@ module.exports = async (req, res) => {
       products,
       total_price
     });
+
+    // nicer email HTML
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #333; line-height:1.5;">
+        <img src="https://i.imgur.com/oFa7Bqt.jpeg" width="120" style="border-radius:8px; margin-bottom:20px;" />
+        <h2 style="color:#d81b60; margin-bottom:10px;">
+          Jūsų užsakymas #${payment_reference} patvirtintas!
+        </h2>
+        <p>Sveiki <strong>${customer_name}</strong>,</p>
+        <p>Dėkojame, kad pasirinkote <strong>Beauty by Ella</strong>! Jūsų užsakymas buvo sėkmingai priimtas ir apdorotas. Prisegame sąskaitą faktūrą PDF formatu.</p>
+        <p>Jei turite klausimų ar reikia pagalbos, rašykite mums el. paštu <a href="mailto:info@beautybyella.lt">info@beautybyella.lt</a> arba skambinkite +370 656 25323.</p>
+        <p>Su meile,<br/><strong>Beauty by Ella</strong> 💖</p>
+      </div>
+    `;
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
@@ -170,18 +198,20 @@ module.exports = async (req, res) => {
     await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
       to,
-      subject: 'Jūsų užsakymas patvirtintas!',
-      html: `<p>Sveiki, <strong>${customer_name}</strong>! Prisegame sąskaitą faktūrą.</p>`,
-      attachments: [{
-        filename: 'invoice.pdf',
-        content: pdfBuffer,
-        contentType: 'application/pdf'
-      }]
+      subject: `Jūsų užsakymas #${payment_reference} patvirtintas!`,
+      html,
+      attachments: [
+        {
+          filename: 'invoice.pdf',
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
     });
 
     return res.status(200).json({ success: true });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Email sending failed:', err);
     return res.status(500).json({ error: err.message });
   }
 };
