@@ -1,12 +1,3 @@
- {
-   "$schema": "https://openapi.vercel.sh/vercel.json",
-   "functions": {
-     "api/send-email.js": {
-       "runtime": "@vercel/node@3.2.14",
--      "engines": {                      // ← remove this whole block
--        "node": "20.x"
--      },
-       "includeFiles": "node_modules/chrome-aws-lambda/**"
-     }
-   }
- }
+{
+  "name": "beauty-by-ella-api",
+  "version": "1.0.0"
