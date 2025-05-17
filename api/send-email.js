@@ -31,20 +31,19 @@ async function createInvoicePdf({
   const priceExcl = +total_price / 1.21;
   const vat = priceExcl * 0.21;
 
-  // 🖼 Fetch and embed the logo
+  // 🖼 Logo
   try {
     const logoBuffer = await fetchImageBuffer('https://i.imgur.com/oFa7Bqt.jpeg');
-    doc.image(logoBuffer, 50, 40, { width: 80 });
+    doc.image(logoBuffer, 50, 40, { width: 100 });
   } catch (e) {
-    console.warn('⚠️ Logo failed to load, skipping...');
+    console.warn('⚠️ Logo failed to load');
   }
 
-  doc.moveDown(2);
-
-  doc.fillColor('#d81b60').fontSize(20).text('SĄSKAITA FAKTŪRA', { align: 'center' });
+  doc.moveDown(3);
+  doc.font('Helvetica-Bold').fillColor('#d81b60').fontSize(20).text('SĄSKAITA FAKTŪRA', { align: 'center' });
   doc.moveDown();
 
-  doc.fillColor('#000').fontSize(12)
+  doc.fillColor('#000').font('Helvetica').fontSize(12)
     .text(`Data: ${date}`, { continued: true })
     .text(`   Užsakymo Nr.: ${payment_reference}`);
   doc.moveDown();
@@ -78,12 +77,9 @@ async function createInvoicePdf({
   }
 
   doc.moveDown(1.5);
-
-  doc.font('Helvetica')
-    .text(`Kaina be PVM:`, 360, doc.y, { continued: true })
-    .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
-  doc.text(`PVM (21%):`, 360, doc.y, { continued: true })
-    .text(`€${vat.toFixed(2)}`, { align: 'right' });
+  doc.fontSize(12);
+  doc.text(`Kaina be PVM:`, 360, doc.y, { continued: true }).text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
+  doc.text(`PVM (21%):`, 360, doc.y, { continued: true }).text(`€${vat.toFixed(2)}`, { align: 'right' });
   doc.font('Helvetica-Bold').fillColor('#d81b60')
     .text(`Bendra suma:`, 360, doc.y, { continued: true })
     .text(`€${(+total_price).toFixed(2)}`, { align: 'right' });
@@ -144,9 +140,10 @@ module.exports = async (req, res) => {
       subject: 'Jūsų užsakymas patvirtintas!',
       html: `
         <div style="font-family: sans-serif; font-size: 15px; color: #333;">
+          <img src="https://i.imgur.com/oFa7Bqt.jpeg" alt="Beauty by Ella" style="width: 100px; border-radius: 8px; margin-bottom: 15px;" />
           <p style="margin-bottom: 12px;">Sveiki, <strong>${customer_name}</strong>,</p>
-          <p>Jūsų užsakymas buvo sėkmingai priimtas! Sąskaita faktūra pridėta kaip PDF dokumentas prie šio laiško.</p>
-          <p style="margin-top: 30px;">Ačiū, kad pirkote iš <strong>Beauty by Ella</strong> 💖</p>
+          <p>Jūsų užsakymas buvo sėkmingai priimtas! Prisegame sąskaitą faktūrą PDF formatu.</p>
+          <p style="margin-top: 30px;">Su meile,<br/><strong>Beauty by Ella</strong> 💖</p>
         </div>
       `,
       attachments: [{
