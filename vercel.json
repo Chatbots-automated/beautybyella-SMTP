@@ -1,12 +1,12 @@
-{
-  "name": "beauty-by-ella-api",
-  "version": "1.0.0",
-  "engines": {
-    "node": "20.x"
-  },
-  "dependencies": {
-    "nodemailer": "^6.9.4",
-    "chrome-aws-lambda": "^10.1.0",
-    "puppeteer-core": "10.1.0"
-  }
-}
+ {
+   "$schema": "https://openapi.vercel.sh/vercel.json",
+   "functions": {
+     "api/send-email.js": {
+       "runtime": "@vercel/node@3.2.14",
+-      "engines": {                      // ← remove this whole block
+-        "node": "20.x"
+-      },
+       "includeFiles": "node_modules/chrome-aws-lambda/**"
+     }
+   }
+ }
