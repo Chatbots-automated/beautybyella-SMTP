@@ -1,7 +1,19 @@
 const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
+const https = require('https');
 
-function createInvoicePdf({
+function fetchImageBuffer(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, res => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    });
+  });
+}
+
+async function createInvoicePdf({
   payment_reference,
   customer_name,
   parsedAddress,
@@ -10,77 +22,74 @@ function createInvoicePdf({
   products,
   total_price
 }) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const buffers = [];
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const buffers = [];
 
-    doc.on('data', buffers.push.bind(buffers));
-    doc.on('end', () => resolve(Buffer.concat(buffers)));
-    doc.on('error', reject);
+  doc.on('data', chunk => buffers.push(chunk));
+  doc.on('end', () => {});
+  const date = new Date().toISOString().split('T')[0];
+  const priceExcl = +total_price / 1.21;
+  const vat = priceExcl * 0.21;
 
-    const date = new Date().toISOString().split('T')[0];
-    const priceExcl = +total_price / 1.21;
-    const vat = priceExcl * 0.21;
+  // 🖼 Fetch and embed the logo
+  try {
+    const logoBuffer = await fetchImageBuffer('https://i.imgur.com/oFa7Bqt.jpeg');
+    doc.image(logoBuffer, 50, 40, { width: 80 });
+  } catch (e) {
+    console.warn('⚠️ Logo failed to load, skipping...');
+  }
 
-    // 🖼 Logo
-    doc.image('https://i.imgur.com/oFa7Bqt.jpeg', 50, 40, { width: 80 });
-    doc.moveDown(2);
+  doc.moveDown(2);
 
-    // Header
-    doc.fillColor('#d81b60').fontSize(20).text('SĄSKAITA FAKTŪRA', { align: 'center' });
-    doc.moveDown();
+  doc.fillColor('#d81b60').fontSize(20).text('SĄSKAITA FAKTŪRA', { align: 'center' });
+  doc.moveDown();
 
-    // Date & Ref
-    doc.fillColor('#000').fontSize(12)
-      .text(`Data: ${date}`, { continued: true })
-      .text(`   Užsakymo Nr.: ${payment_reference}`);
-    doc.moveDown();
+  doc.fillColor('#000').fontSize(12)
+    .text(`Data: ${date}`, { continued: true })
+    .text(`   Užsakymo Nr.: ${payment_reference}`);
+  doc.moveDown();
 
-    // Pardavėjas
-    doc.font('Helvetica-Bold').text('Pardavėjas:', { underline: true });
-    doc.font('Helvetica')
-      .text('Stiklų keitimas automobiliams, MB')
-      .text('Įmonės kodas: 305232614')
-      .text('PVM kodas: LT100017540118')
-      .text('Giraitės g. 60A-2, Trakų r.');
-    doc.moveDown();
+  doc.font('Helvetica-Bold').text('Pardavėjas:', { underline: true });
+  doc.font('Helvetica')
+    .text('Stiklų keitimas automobiliams, MB')
+    .text('Įmonės kodas: 305232614')
+    .text('PVM kodas: LT100017540118')
+    .text('Giraitės g. 60A-2, Trakų r.');
+  doc.moveDown();
 
-    // Pirkėjas
-    doc.font('Helvetica-Bold').text('Pirkėjas:', { underline: true });
-    doc.font('Helvetica')
-      .text(customer_name)
-      .text(parsedAddress)
-      .text(customer_email)
-      .text(phone);
-    doc.moveDown();
+  doc.font('Helvetica-Bold').text('Pirkėjas:', { underline: true });
+  doc.font('Helvetica')
+    .text(customer_name)
+    .text(parsedAddress)
+    .text(customer_email)
+    .text(phone);
+  doc.moveDown();
 
-    // Produktai
-    doc.font('Helvetica-Bold').fillColor('#d81b60').text('Produktai:', { underline: true });
-    doc.moveDown(0.5);
-    doc.font('Helvetica').fillColor('#000');
+  doc.font('Helvetica-Bold').fillColor('#d81b60').text('Produktai:', { underline: true });
+  doc.moveDown(0.5);
+  doc.font('Helvetica').fillColor('#000');
 
-    if (Array.isArray(products)) {
-      products.forEach(p => {
-        doc.text(`• ${p.name} x ${p.quantity} – €${(+p.price).toFixed(2)}`);
-      });
-    } else {
-      doc.text(String(products));
-    }
+  if (Array.isArray(products)) {
+    products.forEach(p => {
+      doc.text(`• ${p.name} x ${p.quantity} – €${(+p.price).toFixed(2)}`);
+    });
+  } else {
+    doc.text(String(products));
+  }
 
-    doc.moveDown(1.5);
+  doc.moveDown(1.5);
 
-    // Totals
-    doc.font('Helvetica')
-      .text(`Kaina be PVM:`, 360, doc.y, { continued: true })
-      .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
-    doc.text(`PVM (21%):`, 360, doc.y, { continued: true })
-      .text(`€${vat.toFixed(2)}`, { align: 'right' });
-    doc.font('Helvetica-Bold').fillColor('#d81b60')
-      .text(`Bendra suma:`, 360, doc.y, { continued: true })
-      .text(`€${(+total_price).toFixed(2)}`, { align: 'right' });
+  doc.font('Helvetica')
+    .text(`Kaina be PVM:`, 360, doc.y, { continued: true })
+    .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
+  doc.text(`PVM (21%):`, 360, doc.y, { continued: true })
+    .text(`€${vat.toFixed(2)}`, { align: 'right' });
+  doc.font('Helvetica-Bold').fillColor('#d81b60')
+    .text(`Bendra suma:`, 360, doc.y, { continued: true })
+    .text(`€${(+total_price).toFixed(2)}`, { align: 'right' });
 
-    doc.end();
-  });
+  doc.end();
+  return Buffer.concat(buffers);
 }
 
 module.exports = async (req, res) => {
