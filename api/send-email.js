@@ -3,13 +3,8 @@ const chromium = require('chrome-aws-lambda');
 const puppeteer = chromium.puppeteer;
 
 async function launchBrowser() {
-  // Try chrome-aws-lambda’s bundled Chromium first
-  let execPath = await chromium.executablePath;
-  // If that’s null/undefined (e.g. local dev), fall back:
-  if (!execPath) {
-    execPath = process.env.CHROME_PATH || '/usr/bin/google-chrome-stable';
-  }
-
+  // Always use the bundled chrome-aws-lambda executable
+  const execPath = await chromium.executablePath;
   return puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
@@ -37,17 +32,15 @@ module.exports = async (req, res) => {
       customer_email,
       phone,
       shipping_address,
-      delivery_method,
       payment_reference,
       products,
       total_price,
     } = req.body;
 
-    const parsedAddress = typeof shipping_address === 'string' ? shipping_address : '';
-    const priceExcludingVAT = +total_price / 1.21;
-    const pvmAmount = priceExcludingVAT * 0.21;
+    const parsedAddress = String(shipping_address || '');
+    const priceExcl = +total_price / 1.21;
+    const vat = priceExcl * 0.21;
 
-    // If products is an array of { name, qty, price }:
     const productsHtml = Array.isArray(products)
       ? `<ul>${products.map(p => `<li>${p.name} x ${p.qty} – €${p.price.toFixed(2)}</li>`).join('')}</ul>`
       : products;
@@ -59,12 +52,12 @@ module.exports = async (req, res) => {
       <body style="font-family: sans-serif; padding: 30px;">
         <h2>Sąskaita faktūra</h2>
         <p><strong>Data:</strong> ${new Date().toISOString().split('T')[0]}<br/>
-           <strong>Užsakymo numeris:</strong> ${payment_reference}</p>
+           <strong>Nr.:</strong> ${payment_reference}</p>
         <p><strong>Pardavėjas:</strong><br/>
            Stiklų keitimas automobiliams, MB<br/>
-           Įmonės kodas: 305232614<br/>
+           Įm.k.: 305232614<br/>
            PVM kodas: LT100017540118<br/>
-           Giraitės g. 60A-2, Rubežiaus k., Trakų r.<br/></p>
+           Giraitės g. 60A-2, Trakų r.</p>
         <p><strong>Pirkėjas:</strong><br/>
            ${customer_name}<br/>
            ${parsedAddress}<br/>
@@ -72,29 +65,26 @@ module.exports = async (req, res) => {
            ${phone}</p>
         <hr/>
         <p><strong>Produktai:</strong><br/>${productsHtml}</p>
-        <p><strong>Kaina be PVM:</strong> €${priceExcludingVAT.toFixed(2)}</p>
-        <p><strong>PVM (21%):</strong> €${pvmAmount.toFixed(2)}</p>
-        <p><strong>Bendra suma:</strong> €${(+total_price).toFixed(2)}</p>
+        <p><strong>Be PVM:</strong> €${priceExcl.toFixed(2)}</p>
+        <p><strong>PVM (21%):</strong> €${vat.toFixed(2)}</p>
+        <p><strong>Iš viso:</strong> €${(+total_price).toFixed(2)}</p>
       </body>
       </html>
     `;
 
-    // Launch Puppeteer
     const browser = await launchBrowser();
     const page = await browser.newPage();
     await page.setContent(htmlInvoice, { waitUntil: 'networkidle0' });
-    // ensure backgrounds/styles are printed
     const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
     await browser.close();
 
-    // send email
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: 'Benukas2222!',  // ← move your real password into an env var!
+        pass: 'Benukas2222!',
       },
     });
 
@@ -102,7 +92,7 @@ module.exports = async (req, res) => {
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
       to,
       subject: 'Jūsų užsakymas patvirtintas!',
-      html: `<p>Ačiū, ${customer_name}! Sąskaita faktūra pridėta kaip PDF prisegtukas.</p>`,
+      html: `<p>Ačiū, ${customer_name}! Sąskaita prisegta PDF formatu.</p>`,
       attachments: [
         {
           filename: 'invoice.pdf',
