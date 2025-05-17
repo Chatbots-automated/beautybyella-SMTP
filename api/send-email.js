@@ -33,8 +33,8 @@ function createInvoicePdf({
       doc.on('data', c => buffers.push(c));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      // 2) register Times New Roman fonts
-      const fontsDir = path.join(__dirname, 'fonts');
+      // 2) register Times New Roman fonts from /api/fonts
+      const fontsDir = path.join(process.cwd(), 'api', 'fonts');
       doc.registerFont(
         'Times-Roman-Embedded',
         fs.readFileSync(path.join(fontsDir, 'Times New Roman.ttf'))
