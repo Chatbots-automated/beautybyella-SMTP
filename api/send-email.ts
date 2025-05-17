@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import nodemailer from 'nodemailer';
 import chromium from 'chrome-aws-lambda';
-import puppeteer from 'puppeteer-core';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
@@ -39,7 +38,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const priceExcludingVAT = +total_price / 1.21;
     const pvmAmount = priceExcludingVAT * 0.21;
 
-    // HTML invoice
     const htmlInvoice = `
       <!DOCTYPE html>
       <html lang="lt">
@@ -67,8 +65,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </html>
     `;
 
-    // 🧾 Generate PDF with puppeteer-core + chrome-aws-lambda
-    const browser = await puppeteer.launch({
+    // ✅ Use chromium.puppeteer to launch the browser (NOT puppeteer-core directly)
+    const browser = await chromium.puppeteer.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath,
       headless: chromium.headless,
@@ -79,7 +77,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pdfBuffer = await page.pdf({ format: 'A4' });
     await browser.close();
 
-    // 📧 Send email with PDF attached
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
@@ -94,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
       to,
       subject: 'Jūsų užsakymas patvirtintas!',
-      html: `<p>Ačiū, ${customer_name}! Sąskaita faktūra prisegta kaip PDF dokumentas.</p>`,
+      html: `<p>Ačiū, ${customer_name}! Sąskaita faktūra pridėta kaip PDF prisegtukas.</p>`,
       attachments: [{
         filename: 'invoice.pdf',
         content: pdfBuffer,
