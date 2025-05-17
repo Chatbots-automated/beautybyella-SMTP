@@ -62,14 +62,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </html>
     `
 
-    // 👇 Dynamic import of puppeteer-core to fix CommonJS issue
-    const puppeteer = await import('puppeteer-core')
+    const browser = await chromium.puppeteer.launch({
+  args: chromium.args,
+  executablePath: await chromium.executablePath,
+  headless: chromium.headless,
+})
 
-    const browser = await puppeteer.default.launch({
-      args: chromium.args,
-      executablePath: await chromium.executablePath,
-      headless: chromium.headless,
-    })
 
     const page = await browser.newPage()
     await page.setContent(htmlInvoice, { waitUntil: 'networkidle0' })
