@@ -134,7 +134,7 @@ module.exports = async (req, res) => {
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: process.env.SMTP_PASS
+        pass: 'Benukas2222!'
       }
     });
 
