@@ -11,78 +11,87 @@ function createInvoicePdf({
   total_price
 }) {
   return new Promise((resolve, reject) => {
-    console.log('📝 Starting PDF generation');
-    const doc = new PDFDocument({ size: 'A4', margin: 30 });
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const buffers = [];
 
-    doc.on('data', chunk => {
-      buffers.push(chunk);
-      console.log(`📦 PDF chunk received (${chunk.length} bytes)`);
-    });
-    doc.on('end', () => {
-      const pdfBuffer = Buffer.concat(buffers);
-      console.log(`✅ PDF generation complete (${pdfBuffer.length} bytes)`);
-      resolve(pdfBuffer);
-    });
-    doc.on('error', err => {
-      console.error('❌ PDF generation error:', err);
-      reject(err);
-    });
-
-    // Build PDF content...
-    doc.font('Helvetica').fontSize(20).text('Sąskaita faktūra', { align: 'center' });
-    doc.moveDown(1.5);
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', reject);
 
     const date = new Date().toISOString().split('T')[0];
-    doc.fontSize(12)
-       .text(`Data: ${date}`, { continued: true })
-       .text(`   Nr.: ${payment_reference}`);
+    const priceExcl = +total_price / 1.21;
+    const vat = priceExcl * 0.21;
+
+    // 🖼 Logo
+    doc.image('https://i.imgur.com/oFa7Bqt.jpeg', 50, 40, { width: 80 });
+    doc.moveDown(2);
+
+    // Header
+    doc.fillColor('#d81b60').fontSize(20).text('SĄSKAITA FAKTŪRA', { align: 'center' });
     doc.moveDown();
 
-    doc.text('Pardavėjas:', { underline: true });
-    doc.text('Stiklų keitimas automobiliams, MB');
-    doc.text('Įmonės kodas: 305232614');
-    doc.text('PVM kodas: LT100017540118');
-    doc.text('Giraitės g. 60A-2, Trakų r.');
+    // Date & Ref
+    doc.fillColor('#000').fontSize(12)
+      .text(`Data: ${date}`, { continued: true })
+      .text(`   Užsakymo Nr.: ${payment_reference}`);
     doc.moveDown();
 
-    doc.text('Pirkėjas:', { underline: true });
-    doc.text(customer_name);
-    doc.text(parsedAddress);
-    doc.text(customer_email);
-    doc.text(phone);
+    // Pardavėjas
+    doc.font('Helvetica-Bold').text('Pardavėjas:', { underline: true });
+    doc.font('Helvetica')
+      .text('Stiklų keitimas automobiliams, MB')
+      .text('Įmonės kodas: 305232614')
+      .text('PVM kodas: LT100017540118')
+      .text('Giraitės g. 60A-2, Trakų r.');
     doc.moveDown();
 
-    doc.text('Produktai:', { underline: true });
+    // Pirkėjas
+    doc.font('Helvetica-Bold').text('Pirkėjas:', { underline: true });
+    doc.font('Helvetica')
+      .text(customer_name)
+      .text(parsedAddress)
+      .text(customer_email)
+      .text(phone);
+    doc.moveDown();
+
+    // Produktai
+    doc.font('Helvetica-Bold').fillColor('#d81b60').text('Produktai:', { underline: true });
+    doc.moveDown(0.5);
+    doc.font('Helvetica').fillColor('#000');
+
     if (Array.isArray(products)) {
       products.forEach(p => {
-        doc.text(`• ${p.name} x ${p.qty} – €${p.price.toFixed(2)}`);
+        doc.text(`• ${p.name} x ${p.quantity} – €${(+p.price).toFixed(2)}`);
       });
     } else {
       doc.text(String(products));
     }
-    doc.moveDown();
 
-    const priceExcl = +total_price / 1.21;
-    const vat = priceExcl * 0.21;
-    doc.text(`Kaina be PVM: €${priceExcl.toFixed(2)}`);
-    doc.text(`PVM (21%): €${vat.toFixed(2)}`);
-    doc.text(`Bendra suma: €${(+total_price).toFixed(2)}`);
+    doc.moveDown(1.5);
+
+    // Totals
+    doc.font('Helvetica')
+      .text(`Kaina be PVM:`, 360, doc.y, { continued: true })
+      .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
+    doc.text(`PVM (21%):`, 360, doc.y, { continued: true })
+      .text(`€${vat.toFixed(2)}`, { align: 'right' });
+    doc.font('Helvetica-Bold').fillColor('#d81b60')
+      .text(`Bendra suma:`, 360, doc.y, { continued: true })
+      .text(`€${(+total_price).toFixed(2)}`, { align: 'right' });
 
     doc.end();
   });
 }
 
 module.exports = async (req, res) => {
-  console.log('➡️  Incoming request:', req.method, req.url);
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(200).end();
   }
+
   if (req.method !== 'POST') {
-    console.warn('⚠️  Unsupported method:', req.method);
     return res.status(405).json({ error: 'Only POST requests allowed' });
   }
 
@@ -98,11 +107,8 @@ module.exports = async (req, res) => {
       total_price
     } = req.body;
 
-    console.log('📧 Email params:', { to, customer_name, customer_email, payment_reference, total_price });
-
     const parsedAddress = String(shipping_address || '');
 
-    // Generate PDF buffer
     const pdfBuffer = await createInvoicePdf({
       payment_reference,
       customer_name,
@@ -112,8 +118,6 @@ module.exports = async (req, res) => {
       products,
       total_price
     });
-
-    console.log('✉️  Preparing to send email to:', to);
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
@@ -125,23 +129,24 @@ module.exports = async (req, res) => {
       }
     });
 
-    console.log('🔑 SMTP transport configured, sending…');
     const info = await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
       to,
       subject: 'Jūsų užsakymas patvirtintas!',
-      html: `<p>Ačiū, ${customer_name}! Sąskaita prisegta PDF formatu.</p>`,
-      attachments: [
-        {
-          filename: 'invoice.pdf',
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        }
-      ]
+      html: `
+        <div style="font-family: sans-serif; font-size: 15px; color: #333;">
+          <p style="margin-bottom: 12px;">Sveiki, <strong>${customer_name}</strong>,</p>
+          <p>Jūsų užsakymas buvo sėkmingai priimtas! Sąskaita faktūra pridėta kaip PDF dokumentas prie šio laiško.</p>
+          <p style="margin-top: 30px;">Ačiū, kad pirkote iš <strong>Beauty by Ella</strong> 💖</p>
+        </div>
+      `,
+      attachments: [{
+        filename: 'invoice.pdf',
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }]
     });
 
-    console.log('✅ Email sent, messageId:', info.messageId);
-    console.log('📬 Preview URL (if available):', nodemailer.getTestMessageUrl(info) || 'n/a');
     return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (err) {
     console.error('❌ Email sending failed:', err);
