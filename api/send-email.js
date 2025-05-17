@@ -2,7 +2,7 @@ const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const https = require('https');
 
-// fetchBuffer: fetch any binary URL into a Buffer
+// fetchBuffer: helper to pull in any binary URL into a Buffer
 function fetchBuffer(url) {
   return new Promise((resolve, reject) => {
     https.get(url, res => {
@@ -23,10 +23,10 @@ async function createInvoicePdf({
   products,
   total_price
 }) {
-  // download fonts once
+  // download Noto Serif fonts from raw.githubusercontent.com
   const [regFont, boldFont] = await Promise.all([
-    fetchBuffer('https://github.com/google/fonts/raw/main/ofl/notoserif/NotoSerif-Regular.ttf'),
-    fetchBuffer('https://github.com/google/fonts/raw/main/ofl/notoserif/NotoSerif-Bold.ttf'),
+    fetchBuffer('https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Regular.ttf'),
+    fetchBuffer('https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Bold.ttf'),
   ]);
 
   return new Promise((resolve, reject) => {
@@ -44,7 +44,7 @@ async function createInvoicePdf({
     const priceExcl = total_price / 1.21;
     const vat = priceExcl * 0.21;
 
-    // logo
+    // logo (fire-and-forget)
     fetchBuffer('https://i.imgur.com/oFa7Bqt.jpeg')
       .then(logo => doc.image(logo, 50, 45, { width: 80 }))
       .catch(() => {});
@@ -104,7 +104,7 @@ async function createInvoicePdf({
       .text('Vnt. kaina', colX.unit, tableTop)
       .text('Suma', colX.sum, tableTop);
 
-    // rows
+    // table rows
     doc.font('Times-Roman-Embedded').fillColor('#000').fontSize(10);
     let y = tableTop + 20;
     (Array.isArray(products) ? products : [{ name: products, qty: 1, price: total_price }])
