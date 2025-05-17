@@ -1,8 +1,7 @@
 const PDFDocument = require('pdfkit');
-const getStream = require('get-stream');
 const nodemailer = require('nodemailer');
 
-async function createInvoicePdf({
+function createInvoicePdf({
   payment_reference,
   customer_name,
   parsedAddress,
@@ -11,56 +10,60 @@ async function createInvoicePdf({
   products,
   total_price
 }) {
-  const doc = new PDFDocument({ size: 'A4', margin: 30 });
-  doc.font('Helvetica');
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 30 });
+    const buffers = [];
+    doc.on('data', chunk => buffers.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(buffers)));
+    doc.on('error', err => reject(err));
 
-  // Title
-  doc.fontSize(20).text('Sąskaita faktūra', { align: 'center' });
-  doc.moveDown(1.5);
+    // Title
+    doc.font('Helvetica').fontSize(20).text('Sąskaita faktūra', { align: 'center' });
+    doc.moveDown(1.5);
 
-  // Header info
-  const date = new Date().toISOString().split('T')[0];
-  doc.fontSize(12)
-     .text(`Data: ${date}`, { continued: true })
-     .text(`   Nr.: ${payment_reference}`);
-  doc.moveDown();
+    // Header
+    const date = new Date().toISOString().split('T')[0];
+    doc.fontSize(12)
+       .text(`Data: ${date}`, { continued: true })
+       .text(`   Nr.: ${payment_reference}`);
+    doc.moveDown();
 
-  // Seller
-  doc.text('Pardavėjas:', { underline: true });
-  doc.text('Stiklų keitimas automobiliams, MB');
-  doc.text('Įmonės kodas: 305232614');
-  doc.text('PVM kodas: LT100017540118');
-  doc.text('Giraitės g. 60A-2, Trakų r.');
-  doc.moveDown();
+    // Seller
+    doc.text('Pardavėjas:', { underline: true });
+    doc.text('Stiklų keitimas automobiliams, MB');
+    doc.text('Įmonės kodas: 305232614');
+    doc.text('PVM kodas: LT100017540118');
+    doc.text('Giraitės g. 60A-2, Trakų r.');
+    doc.moveDown();
 
-  // Buyer
-  doc.text('Pirkėjas:', { underline: true });
-  doc.text(customer_name);
-  doc.text(parsedAddress);
-  doc.text(customer_email);
-  doc.text(phone);
-  doc.moveDown();
+    // Buyer
+    doc.text('Pirkėjas:', { underline: true });
+    doc.text(customer_name);
+    doc.text(parsedAddress);
+    doc.text(customer_email);
+    doc.text(phone);
+    doc.moveDown();
 
-  // Products
-  doc.text('Produktai:', { underline: true });
-  if (Array.isArray(products)) {
-    products.forEach(p => {
-      doc.text(`• ${p.name} x ${p.qty} – €${p.price.toFixed(2)}`);
-    });
-  } else {
-    doc.text(products.toString());
-  }
-  doc.moveDown();
+    // Products
+    doc.text('Produktai:', { underline: true });
+    if (Array.isArray(products)) {
+      products.forEach(p => {
+        doc.text(`• ${p.name} x ${p.qty} – €${p.price.toFixed(2)}`);
+      });
+    } else {
+      doc.text(String(products));
+    }
+    doc.moveDown();
 
-  // Totals
-  const priceExcl = +total_price / 1.21;
-  const vat = priceExcl * 0.21;
-  doc.text(`Kaina be PVM: €${priceExcl.toFixed(2)}`);
-  doc.text(`PVM (21%): €${vat.toFixed(2)}`);
-  doc.text(`Bendra suma: €${(+total_price).toFixed(2)}`);
+    // Totals
+    const priceExcl = +total_price / 1.21;
+    const vat = priceExcl * 0.21;
+    doc.text(`Kaina be PVM: €${priceExcl.toFixed(2)}`);
+    doc.text(`PVM (21%): €${vat.toFixed(2)}`);
+    doc.text(`Bendra suma: €${(+total_price).toFixed(2)}`);
 
-  doc.end();
-  return getStream.buffer(doc);
+    doc.end();
+  });
 }
 
 module.exports = async (req, res) => {
@@ -88,7 +91,7 @@ module.exports = async (req, res) => {
 
     const parsedAddress = String(shipping_address || '');
 
-    // Generate the PDF invoice
+    // Generate PDF buffer
     const pdfBuffer = await createInvoicePdf({
       payment_reference,
       customer_name,
@@ -99,15 +102,15 @@ module.exports = async (req, res) => {
       total_price
     });
 
-    // Send the email
+    // Send email
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: process.env.SMTP_PASS,  // set in Vercel env vars
-      },
+        pass: process.env.SMTP_PASS  // set this in Vercel Env Vars
+      }
     });
 
     await transporter.sendMail({
@@ -119,9 +122,9 @@ module.exports = async (req, res) => {
         {
           filename: 'invoice.pdf',
           content: pdfBuffer,
-          contentType: 'application/pdf',
-        },
-      ],
+          contentType: 'application/pdf'
+        }
+      ]
     });
 
     return res.status(200).json({ success: true });
