@@ -1,3 +1,8 @@
+// Force chrome-aws-lambda to think it's on Lambda when running on Vercel
+if (process.env.VERCEL) {
+  process.env.AWS_LAMBDA_FUNCTION_NAME = process.env.AWS_LAMBDA_FUNCTION_NAME || 'vercel';
+}
+
 const nodemailer = require('nodemailer');
 const chromium = require('chrome-aws-lambda');
 const puppeteer = chromium.puppeteer;
@@ -85,7 +90,7 @@ module.exports = async (req, res) => {
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: process.env.SMTP_PASS,
+        pass: process.env.SMTP_PASS,  // set this in your Vercel Env Vars
       },
     });
 
