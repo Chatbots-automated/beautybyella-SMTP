@@ -24,11 +24,12 @@ async function createInvoicePdf({
   total_price
 }) {
   // 1) Download TTFs
-  const [regFontBuffer, boldFontBuffer] = await Promise.all([
+  const [regularFontBuffer, boldFontBuffer] = await Promise.all([
     fetchBuffer('https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Regular.ttf'),
     fetchBuffer('https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Bold.ttf'),
   ]);
 
+  // 2) Build PDF
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const buffers = [];
@@ -36,27 +37,27 @@ async function createInvoicePdf({
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', reject);
 
-    // 2) register them under friendly names
-    doc.registerFont('Invoice-Regular', regFontBuffer);
-    doc.registerFont('Invoice-Bold',   boldFontBuffer);
+    // 3) Register fonts under friendly names
+    doc.registerFont('Invoice-Regular', regularFontBuffer);
+    doc.registerFont('Invoice-Bold', boldFontBuffer);
 
-    const date = new Date().toISOString().split('T')[0];
-    const priceExcl = total_price / 1.21;
-    const vat = priceExcl * 0.21;
+    const date     = new Date().toISOString().split('T')[0];
+    const priceExcl= total_price / 1.21;
+    const vat      = priceExcl * 0.21;
 
-    // logo (fire-and-forget)
+    // 4) Logo
     fetchBuffer('https://i.imgur.com/oFa7Bqt.jpeg')
       .then(img => doc.image(img, 50, 45, { width: 80 }))
       .catch(() => {});
 
-    // heading
+    // 5) Heading
     doc
       .font('Invoice-Bold')
       .fillColor('#d81b60')
       .fontSize(24)
       .text('SĄSKAITA FAKTŪRA', 0, 60, { align: 'center' });
 
-    // invoice info
+    // 6) Invoice metadata
     doc
       .font('Invoice-Regular')
       .fillColor('#000')
@@ -64,7 +65,7 @@ async function createInvoicePdf({
       .text(`Data: ${date}`, 50, 120)
       .text(`Užsakymo Nr.: ${payment_reference}`, 50, 135);
 
-    // seller
+    // 7) Seller
     doc
       .font('Invoice-Bold').text('Pardavėjas:', 50, 160)
       .font('Invoice-Regular')
@@ -73,7 +74,7 @@ async function createInvoicePdf({
       .text('PVM kodas: LT100017540118')
       .text('Giraitės g. 60A-2, Trakų r.');
 
-    // buyer
+    // 8) Buyer
     doc
       .font('Invoice-Bold').text('Pirkėjas:', 300, 160)
       .font('Invoice-Regular')
@@ -82,7 +83,7 @@ async function createInvoicePdf({
       .text(customer_email)
       .text(phone);
 
-    // separator
+    // 9) Separator
     doc
       .moveTo(50, 250)
       .lineTo(545, 250)
@@ -90,7 +91,7 @@ async function createInvoicePdf({
       .strokeColor('#eeeeee')
       .stroke();
 
-    // table header
+    // 10) Table Header
     const tableTop = 270;
     const colX = { item: 50, qty: 300, unit: 380, sum: 470 };
     doc
@@ -102,7 +103,7 @@ async function createInvoicePdf({
       .text('Vnt. kaina', colX.unit, tableTop)
       .text('Suma', colX.sum, tableTop);
 
-    // table rows
+    // 11) Table Rows
     doc.font('Invoice-Regular').fillColor('#000').fontSize(10);
     let y = tableTop + 20;
     (Array.isArray(products) ? products : [{ name: products, qty: 1, price: total_price }])
@@ -115,7 +116,7 @@ async function createInvoicePdf({
         y += 20;
       });
 
-    // totals
+    // 12) Totals
     y += 20;
     doc
       .font('Invoice-Regular')
@@ -137,8 +138,8 @@ async function createInvoicePdf({
   });
 }
 
-
 module.exports = async (req, res) => {
+  // CORS preflight
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -163,6 +164,7 @@ module.exports = async (req, res) => {
 
     const parsedAddress = shipping_address || '';
 
+    // Generate PDF
     const pdfBuffer = await createInvoicePdf({
       payment_reference,
       customer_name,
@@ -173,6 +175,7 @@ module.exports = async (req, res) => {
       total_price
     });
 
+    // Email HTML
     const html = `
       <div style="font-family: Arial, sans-serif; color: #333; line-height:1.5;">
         <img src="https://i.imgur.com/oFa7Bqt.jpeg" width="120" style="border-radius:8px; margin-bottom:20px;" />
@@ -184,6 +187,7 @@ module.exports = async (req, res) => {
       </div>
     `;
 
+    // Send Mail
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
@@ -200,11 +204,7 @@ module.exports = async (req, res) => {
       subject: `Jūsų užsakymas #${payment_reference} patvirtintas!`,
       html,
       attachments: [
-        {
-          filename: 'invoice.pdf',
-          content: pdfBuffer,
-          contentType: 'application/pdf'
-        }
+        { filename: 'invoice.pdf', content: pdfBuffer, contentType: 'application/pdf' }
       ]
     });
 
