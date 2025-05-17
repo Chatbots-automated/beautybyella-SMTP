@@ -1,6 +1,7 @@
 {
   "name": "beauty-by-ella-api",
   "version": "1.0.0",
+  "type": "module",
   "dependencies": {
     "nodemailer": "^6.9.4",
     "puppeteer-core": "^21.3.8",
