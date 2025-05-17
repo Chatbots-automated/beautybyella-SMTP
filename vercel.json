@@ -1,13 +1,9 @@
-
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/send-email.js": {
       "runtime": "@vercel/node@3.2.14",
-      "includeFiles": [
-        "api/fonts/**/*",
-        "node_modules/{chrome-aws-lambda,puppeteer-core}/**/*"
-      ]
+      "includeFiles": "api/fonts/**/*"
     }
   }
 }
