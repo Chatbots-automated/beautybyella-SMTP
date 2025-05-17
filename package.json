@@ -1,12 +1,12 @@
- {
-   "name": "beauty-by-ella-api",
-   "version": "1.0.0",
-+  "engines": {
-+    "node": "20.x"
-+  },
-   "dependencies": {
-     "nodemailer": "^6.9.4",
-     "chrome-aws-lambda": "^10.1.0",
-     "puppeteer-core": "10.1.0"
-   }
- }
+{
+  "name": "beauty-by-ella-api",
+  "version": "1.0.0",
+  "engines": {
+    "node": "20.x"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.4",
+    "chrome-aws-lambda": "^10.1.0",
+    "puppeteer-core": "10.1.0"
+  }
+}
