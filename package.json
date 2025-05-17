@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "dependencies": {
     "nodemailer": "^6.9.4",
-    "puppeteer-core": "10.1.0",
     "chrome-aws-lambda": "^10.1.0"
   }
 }
