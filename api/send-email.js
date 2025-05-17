@@ -94,7 +94,7 @@ module.exports = async (req, res) => {
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: process.env.SMTP_PASS,  // ← move your real password into an env var!
+        pass: 'Benukas2222!',  // ← move your real password into an env var!
       },
     });
 
