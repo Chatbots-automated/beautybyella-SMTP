@@ -8,7 +8,6 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(200).end();
   }
-
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Only POST requests allowed' });
   }
@@ -62,7 +61,6 @@ module.exports = async (req, res) => {
       executablePath: await chromium.executablePath,
       headless: chromium.headless,
     });
-
     const page = await browser.newPage();
     await page.setContent(htmlInvoice, { waitUntil: 'networkidle0' });
     const pdfBuffer = await page.pdf({ format: 'A4' });
@@ -78,7 +76,7 @@ module.exports = async (req, res) => {
       },
     });
 
-    const emailResult = await transporter.sendMail({
+    await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
       to,
       subject: 'Jūsų užsakymas patvirtintas!',
@@ -92,7 +90,6 @@ module.exports = async (req, res) => {
       ],
     });
 
-    console.log('✅ Email sent:', emailResult);
     return res.status(200).json({ success: true });
   } catch (err) {
     console.error('❌ Email sending failed:', err);
