@@ -3,8 +3,9 @@ const chromium = require('chrome-aws-lambda');
 const puppeteer = chromium.puppeteer;
 
 async function launchBrowser() {
-  // Always use the bundled chrome-aws-lambda executable
   const execPath = await chromium.executablePath;
+  console.log('🕵️ chromium.executablePath →', execPath);
+  console.log('🕵️ chromium.args →', chromium.args);
   return puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
@@ -84,7 +85,7 @@ module.exports = async (req, res) => {
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: 'Benukas2222!',
+        pass: process.env.SMTP_PASS,
       },
     });
 
