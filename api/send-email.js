@@ -1,23 +1,66 @@
-// Force chrome-aws-lambda to think it's on Lambda when running on Vercel
-if (process.env.VERCEL) {
-  process.env.AWS_LAMBDA_FUNCTION_NAME = process.env.AWS_LAMBDA_FUNCTION_NAME || 'vercel';
-}
-
+const PDFDocument = require('pdfkit');
+const getStream = require('get-stream');
 const nodemailer = require('nodemailer');
-const chromium = require('chrome-aws-lambda');
-const puppeteer = chromium.puppeteer;
 
-async function launchBrowser() {
-  const execPath = await chromium.executablePath;
-  console.log('🕵️ chromium.executablePath →', execPath);
-  console.log('🕵️ chromium.args →', chromium.args);
-  return puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
-    executablePath: execPath,
-    headless: chromium.headless,
-    ignoreHTTPSErrors: true,
-  });
+async function createInvoicePdf({
+  payment_reference,
+  customer_name,
+  parsedAddress,
+  customer_email,
+  phone,
+  products,
+  total_price
+}) {
+  const doc = new PDFDocument({ size: 'A4', margin: 30 });
+  doc.font('Helvetica');
+
+  // Title
+  doc.fontSize(20).text('Sąskaita faktūra', { align: 'center' });
+  doc.moveDown(1.5);
+
+  // Header info
+  const date = new Date().toISOString().split('T')[0];
+  doc.fontSize(12)
+     .text(`Data: ${date}`, { continued: true })
+     .text(`   Nr.: ${payment_reference}`);
+  doc.moveDown();
+
+  // Seller
+  doc.text('Pardavėjas:', { underline: true });
+  doc.text('Stiklų keitimas automobiliams, MB');
+  doc.text('Įmonės kodas: 305232614');
+  doc.text('PVM kodas: LT100017540118');
+  doc.text('Giraitės g. 60A-2, Trakų r.');
+  doc.moveDown();
+
+  // Buyer
+  doc.text('Pirkėjas:', { underline: true });
+  doc.text(customer_name);
+  doc.text(parsedAddress);
+  doc.text(customer_email);
+  doc.text(phone);
+  doc.moveDown();
+
+  // Products
+  doc.text('Produktai:', { underline: true });
+  if (Array.isArray(products)) {
+    products.forEach(p => {
+      doc.text(`• ${p.name} x ${p.qty} – €${p.price.toFixed(2)}`);
+    });
+  } else {
+    doc.text(products.toString());
+  }
+  doc.moveDown();
+
+  // Totals
+  const priceExcl = +total_price / 1.21;
+  const vat = priceExcl * 0.21;
+  doc.text(`Kaina be PVM: €${priceExcl.toFixed(2)}`);
+  doc.text(`PVM (21%): €${vat.toFixed(2)}`);
+  doc.text(`Bendra suma: €${(+total_price).toFixed(2)}`);
+
+  doc.end();
+  return getStream.buffer(doc);
 }
 
 module.exports = async (req, res) => {
@@ -40,57 +83,30 @@ module.exports = async (req, res) => {
       shipping_address,
       payment_reference,
       products,
-      total_price,
+      total_price
     } = req.body;
 
     const parsedAddress = String(shipping_address || '');
-    const priceExcl = +total_price / 1.21;
-    const vat = priceExcl * 0.21;
 
-    const productsHtml = Array.isArray(products)
-      ? `<ul>${products.map(p => `<li>${p.name} x ${p.qty} – €${p.price.toFixed(2)}</li>`).join('')}</ul>`
-      : products;
+    // Generate the PDF invoice
+    const pdfBuffer = await createInvoicePdf({
+      payment_reference,
+      customer_name,
+      parsedAddress,
+      customer_email,
+      phone,
+      products,
+      total_price
+    });
 
-    const htmlInvoice = `
-      <!DOCTYPE html>
-      <html lang="lt">
-      <head><meta charset="UTF-8"/></head>
-      <body style="font-family: sans-serif; padding: 30px;">
-        <h2>Sąskaita faktūra</h2>
-        <p><strong>Data:</strong> ${new Date().toISOString().split('T')[0]}<br/>
-           <strong>Nr.:</strong> ${payment_reference}</p>
-        <p><strong>Pardavėjas:</strong><br/>
-           Stiklų keitimas automobiliams, MB<br/>
-           Įm.k.: 305232614<br/>
-           PVM kodas: LT100017540118<br/>
-           Giraitės g. 60A-2, Trakų r.</p>
-        <p><strong>Pirkėjas:</strong><br/>
-           ${customer_name}<br/>
-           ${parsedAddress}<br/>
-           ${customer_email}<br/>
-           ${phone}</p>
-        <hr/>
-        <p><strong>Produktai:</strong><br/>${productsHtml}</p>
-        <p><strong>Be PVM:</strong> €${priceExcl.toFixed(2)}</p>
-        <p><strong>PVM (21%):</strong> €${vat.toFixed(2)}</p>
-        <p><strong>Iš viso:</strong> €${(+total_price).toFixed(2)}</p>
-      </body>
-      </html>
-    `;
-
-    const browser = await launchBrowser();
-    const page = await browser.newPage();
-    await page.setContent(htmlInvoice, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
-    await browser.close();
-
+    // Send the email
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
       secure: true,
       auth: {
         user: 'info@beautybyella.lt',
-        pass: process.env.SMTP_PASS,  // set this in your Vercel Env Vars
+        pass: process.env.SMTP_PASS,  // set in Vercel env vars
       },
     });
 
