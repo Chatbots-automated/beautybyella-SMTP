@@ -1,16 +1,17 @@
-import nodemailer from 'nodemailer';
-import chromium from 'chrome-aws-lambda';
+import type { VercelRequest, VercelResponse } from '@vercel/node'
+import nodemailer from 'nodemailer'
+import chromium from 'chrome-aws-lambda'
 
-export default async function handler(req, res) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    return res.status(200).end()
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Only POST requests allowed' });
+    return res.status(405).json({ error: 'Only POST requests allowed' })
   }
 
   try {
@@ -24,11 +25,11 @@ export default async function handler(req, res) {
       payment_reference,
       products,
       total_price,
-    } = req.body;
+    } = req.body
 
-    const parsedAddress = typeof shipping_address === 'string' ? shipping_address : '';
-    const priceExcludingVAT = +total_price / 1.21;
-    const pvmAmount = priceExcludingVAT * 0.21;
+    const parsedAddress = typeof shipping_address === 'string' ? shipping_address : ''
+    const priceExcludingVAT = +total_price / 1.21
+    const pvmAmount = priceExcludingVAT * 0.21
 
     const htmlInvoice = `
       <!DOCTYPE html>
@@ -55,18 +56,19 @@ export default async function handler(req, res) {
         <p><strong>Bendra suma:</strong> €${(+total_price).toFixed(2)}</p>
       </body>
       </html>
-    `;
+    `
 
+    // 👇 DO NOT import puppeteer-core separately!
     const browser = await chromium.puppeteer.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath,
       headless: chromium.headless,
-    });
+    })
 
-    const page = await browser.newPage();
-    await page.setContent(htmlInvoice, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4' });
-    await browser.close();
+    const page = await browser.newPage()
+    await page.setContent(htmlInvoice, { waitUntil: 'networkidle0' })
+    const pdfBuffer = await page.pdf({ format: 'A4' })
+    await browser.close()
 
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
@@ -76,7 +78,7 @@ export default async function handler(req, res) {
         user: 'info@beautybyella.lt',
         pass: 'Benukas2222!',
       },
-    });
+    })
 
     const emailResult = await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
@@ -90,12 +92,12 @@ export default async function handler(req, res) {
           contentType: 'application/pdf',
         },
       ],
-    });
+    })
 
-    console.log('✅ Email sent:', emailResult);
-    return res.status(200).json({ success: true });
-  } catch (err) {
-    console.error('❌ Email sending failed:', err);
-    return res.status(500).json({ error: err.message || 'Email send failed' });
+    console.log('✅ Email sent:', emailResult)
+    return res.status(200).json({ success: true })
+  } catch (err: any) {
+    console.error('❌ Email sending failed:', err)
+    return res.status(500).json({ error: err.message || 'Email send failed' })
   }
 }
