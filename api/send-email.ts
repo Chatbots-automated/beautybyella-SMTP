@@ -62,15 +62,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       </html>
     `
 
-    import chromium from 'chrome-aws-lambda'
+    // 🧾 Load puppeteer-core dynamically from chrome-aws-lambda
+    const puppeteer = await chromium.puppeteer
 
-// Use chromium.puppeteer to access internal puppeteer-core correctly
-const browser = await chromium.puppeteer.launch({
-  args: chromium.args,
-  executablePath: await chromium.executablePath,
-  headless: chromium.headless,
-})
-
+    const browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath,
+      headless: chromium.headless,
+    })
 
     const page = await browser.newPage()
     await page.setContent(htmlInvoice, { waitUntil: 'networkidle0' })
