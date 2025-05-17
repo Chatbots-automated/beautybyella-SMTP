@@ -2,7 +2,7 @@ const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const https = require('https');
 
-// fetchBuffer: helper to pull in any binary URL into a Buffer
+// fetchBuffer: helper to pull any binary URL into a Buffer
 function fetchBuffer(url) {
   return new Promise((resolve, reject) => {
     https.get(url, res => {
@@ -23,12 +23,13 @@ async function createInvoicePdf({
   products,
   total_price
 }) {
-  // download Noto Serif fonts from raw.githubusercontent.com
-  const [regFont, boldFont] = await Promise.all([
+  // 1) Download Noto Serif TTFs
+  const [regularFont, boldFont] = await Promise.all([
     fetchBuffer('https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Regular.ttf'),
     fetchBuffer('https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Bold.ttf'),
   ]);
 
+  // 2) Create PDF
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
     const buffers = [];
@@ -36,55 +37,51 @@ async function createInvoicePdf({
     doc.on('end', () => resolve(Buffer.concat(buffers)));
     doc.on('error', reject);
 
-    // register under your embedded names
-    doc.registerFont('Times-Roman-Embedded', regFont);
-    doc.registerFont('Times-Bold-Embedded', boldFont);
+    const date     = new Date().toISOString().split('T')[0];
+    const priceExcl= total_price / 1.21;
+    const vat      = priceExcl * 0.21;
 
-    const date = new Date().toISOString().split('T')[0];
-    const priceExcl = total_price / 1.21;
-    const vat = priceExcl * 0.21;
-
-    // logo (fire-and-forget)
+    // Logo (async fire-and-forget)
     fetchBuffer('https://i.imgur.com/oFa7Bqt.jpeg')
-      .then(logo => doc.image(logo, 50, 45, { width: 80 }))
+      .then(img => doc.image(img, 50, 45, { width: 80 }))
       .catch(() => {});
 
-    // heading
+    // Heading
     doc
-      .font('Times-Bold-Embedded')
+      .font(boldFont)
       .fillColor('#d81b60')
       .fontSize(24)
       .text('SĄSKAITA FAKTŪRA', 0, 60, { align: 'center' });
 
-    // invoice meta
+    // Invoice meta
     doc
-      .font('Times-Roman-Embedded')
+      .font(regularFont)
       .fillColor('#000')
       .fontSize(10)
       .text(`Data: ${date}`, 50, 120)
       .text(`Užsakymo Nr.: ${payment_reference}`, 50, 135);
 
-    // seller
+    // Seller (left)
     doc
-      .font('Times-Bold-Embedded')
+      .font(boldFont)
       .text('Pardavėjas:', 50, 160)
-      .font('Times-Roman-Embedded')
+      .font(regularFont)
       .text('Stiklų keitimas automobiliams, MB', 50, 175)
       .text('Įm. kodas: 305232614')
       .text('PVM kodas: LT100017540118')
       .text('Giraitės g. 60A-2, Trakų r.');
 
-    // buyer
+    // Buyer (right)
     doc
-      .font('Times-Bold-Embedded')
+      .font(boldFont)
       .text('Pirkėjas:', 300, 160)
-      .font('Times-Roman-Embedded')
+      .font(regularFont)
       .text(customer_name, 300, 175)
       .text(parsedAddress)
       .text(customer_email)
       .text(phone);
 
-    // separator
+    // Separator
     doc
       .moveTo(50, 250)
       .lineTo(545, 250)
@@ -92,11 +89,11 @@ async function createInvoicePdf({
       .strokeColor('#eeeeee')
       .stroke();
 
-    // table header
+    // Table header
     const tableTop = 270;
     const colX = { item: 50, qty: 300, unit: 380, sum: 470 };
     doc
-      .font('Times-Bold-Embedded')
+      .font(boldFont)
       .fillColor('#d81b60')
       .fontSize(12)
       .text('Prekė', colX.item, tableTop)
@@ -104,8 +101,8 @@ async function createInvoicePdf({
       .text('Vnt. kaina', colX.unit, tableTop)
       .text('Suma', colX.sum, tableTop);
 
-    // table rows
-    doc.font('Times-Roman-Embedded').fillColor('#000').fontSize(10);
+    // Table rows
+    doc.font(regularFont).fillColor('#000').fontSize(10);
     let y = tableTop + 20;
     (Array.isArray(products) ? products : [{ name: products, qty: 1, price: total_price }])
       .forEach(p => {
@@ -117,10 +114,10 @@ async function createInvoicePdf({
         y += 20;
       });
 
-    // totals
+    // Totals
     y += 20;
     doc
-      .font('Times-Roman-Embedded')
+      .font(regularFont)
       .fontSize(10)
       .text('Be PVM:', colX.unit, y, { continued: true })
       .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
@@ -130,7 +127,7 @@ async function createInvoicePdf({
       .text(`€${vat.toFixed(2)}`, { align: 'right' });
     y += 15;
     doc
-      .font('Times-Bold-Embedded')
+      .font(boldFont)
       .fillColor('#d81b60')
       .text('Iš viso:', colX.unit, y, { continued: true })
       .text(`€${total_price.toFixed(2)}`, { align: 'right' });
