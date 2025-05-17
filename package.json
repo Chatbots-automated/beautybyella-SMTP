@@ -6,7 +6,7 @@
   },
   "dependencies": {
     "nodemailer": "^6.9.4",
-    "chrome-aws-lambda": "^10.1.0",
-    "puppeteer-core": "10.1.0"
+    "pdfkit": "^0.13.0",
+    "get-stream": "^7.0.0"
   }
 }
