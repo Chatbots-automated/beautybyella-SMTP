@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const https = require('https');
@@ -25,33 +27,43 @@ function createInvoicePdf({
 }) {
   return new Promise(async (resolve, reject) => {
     try {
+      // 1) setup PDF and buffers
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
       const buffers = [];
       doc.on('data', c => buffers.push(c));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
 
-      const date = new Date().toISOString().split('T')[0];
-      const priceExcl = total_price / 1.21;
-      const vat = priceExcl * 0.21;
+      // 2) register Times New Roman fonts
+      const fontsDir = path.join(__dirname, 'fonts');
+      doc.registerFont(
+        'Times-Roman-Embedded',
+        fs.readFileSync(path.join(fontsDir, 'Times New Roman.ttf'))
+      );
+      doc.registerFont(
+        'Times-Bold-Embedded',
+        fs.readFileSync(path.join(fontsDir, 'Times New Roman Bold.ttf'))
+      );
+
+      const date     = new Date().toISOString().split('T')[0];
+      const priceExcl= total_price / 1.21;
+      const vat      = priceExcl * 0.21;
 
       // --- Logo top-left ---
       try {
         const logo = await fetchImageBuffer('https://i.imgur.com/oFa7Bqt.jpeg');
         doc.image(logo, 50, 45, { width: 80 });
-      } catch (_) {
-        // ignore
-      }
+      } catch (_) { /* ignore */ }
 
       // --- Heading centered ---
       doc
-        .font('Helvetica-Bold')
+        .font('Times-Bold-Embedded')
         .fillColor('#d81b60')
         .fontSize(24)
         .text('SĄSKAITA FAKTŪRA', 0, 60, { align: 'center' });
 
       // --- Invoice info ---
       doc
-        .font('Helvetica')
+        .font('Times-Roman-Embedded')
         .fillColor('#000')
         .fontSize(10)
         .text(`Data: ${date}`, 50, 120)
@@ -59,9 +71,9 @@ function createInvoicePdf({
 
       // --- Seller (left) ---
       doc
-        .font('Helvetica-Bold')
+        .font('Times-Bold-Embedded')
         .text('Pardavėjas:', 50, 160)
-        .font('Helvetica')
+        .font('Times-Roman-Embedded')
         .text('Stiklų keitimas automobiliams, MB', 50, 175)
         .text('Įm. kodas: 305232614')
         .text('PVM kodas: LT100017540118')
@@ -69,9 +81,9 @@ function createInvoicePdf({
 
       // --- Buyer (right) ---
       doc
-        .font('Helvetica-Bold')
+        .font('Times-Bold-Embedded')
         .text('Pirkėjas:', 300, 160)
-        .font('Helvetica')
+        .font('Times-Roman-Embedded')
         .text(customer_name, 300, 175)
         .text(parsedAddress)
         .text(customer_email)
@@ -89,7 +101,7 @@ function createInvoicePdf({
       const tableTop = 270;
       const colX = { item: 50, qty: 300, unit: 380, sum: 470 };
       doc
-        .font('Helvetica-Bold')
+        .font('Times-Bold-Embedded')
         .fillColor('#d81b60')
         .fontSize(12)
         .text('Prekė', colX.item, tableTop)
@@ -98,7 +110,7 @@ function createInvoicePdf({
         .text('Suma', colX.sum, tableTop);
 
       // --- Table rows ---
-      doc.font('Helvetica').fillColor('#000').fontSize(10);
+      doc.font('Times-Roman-Embedded').fillColor('#000').fontSize(10);
       let y = tableTop + 20;
       (Array.isArray(products) ? products : [{ name: products, qty: 1, price: total_price }])
         .forEach(p => {
@@ -113,7 +125,7 @@ function createInvoicePdf({
       // --- Totals ---
       y += 20;
       doc
-        .font('Helvetica')
+        .font('Times-Roman-Embedded')
         .fontSize(10)
         .text('Be PVM:', colX.unit, y, { continued: true })
         .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
@@ -123,7 +135,7 @@ function createInvoicePdf({
         .text(`€${vat.toFixed(2)}`, { align: 'right' });
       y += 15;
       doc
-        .font('Helvetica-Bold')
+        .font('Times-Bold-Embedded')
         .fillColor('#d81b60')
         .text('Iš viso:', colX.unit, y, { continued: true })
         .text(`€${total_price.toFixed(2)}`, { align: 'right' });
@@ -175,9 +187,7 @@ module.exports = async (req, res) => {
     const html = `
       <div style="font-family: Arial, sans-serif; color: #333; line-height:1.5;">
         <img src="https://i.imgur.com/oFa7Bqt.jpeg" width="120" style="border-radius:8px; margin-bottom:20px;" />
-        <h2 style="color:#d81b60; margin-bottom:10px;">
-          Jūsų užsakymas #${payment_reference} patvirtintas!
-        </h2>
+        <h2 style="color:#d81b60; margin-bottom:10px;">Jūsų užsakymas #${payment_reference} patvirtintas!</h2>
         <p>Sveiki <strong>${customer_name}</strong>,</p>
         <p>Dėkojame, kad pasirinkote <strong>Beauty by Ella</strong>! Jūsų užsakymas buvo sėkmingai priimtas ir apdorotas. Prisegame sąskaitą faktūrą PDF formatu.</p>
         <p>Jei turite klausimų ar reikia pagalbos, rašykite mums el. paštu <a href="mailto:info@beautybyella.lt">info@beautybyella.lt</a> arba skambinkite +370 656 25323.</p>
