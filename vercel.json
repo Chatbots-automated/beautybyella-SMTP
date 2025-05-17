@@ -3,7 +3,7 @@
   "functions": {
     "api/send-email.js": {
       "runtime": "@vercel/node@3.2.14",
-      "includeFiles": "api/fonts/**/*"
+      "includeFiles": "api/fonts/*.ttf"
     }
   }
 }
