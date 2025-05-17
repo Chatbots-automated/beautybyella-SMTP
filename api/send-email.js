@@ -23,129 +23,88 @@ async function createInvoicePdf({
   products,
   total_price
 }) {
-  // 1) Download TTFs
-  const [regularFontBuffer, boldFontBuffer] = await Promise.all([
-    fetchBuffer('https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Regular.ttf'),
-    fetchBuffer('https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif-Bold.ttf'),
-  ]);
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const buffers = [];
 
-  // 2) Build PDF
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const buffers = [];
-    doc.on('data', c => buffers.push(c));
-    doc.on('end', () => resolve(Buffer.concat(buffers)));
-    doc.on('error', reject);
+  doc.on('data', chunk => buffers.push(chunk));
+  doc.on('end', () => {});
+  const date = new Date().toISOString().split('T')[0];
+  const priceExcl = +total_price / 1.21;
+  const vat = priceExcl * 0.21;
 
-    // 3) Register fonts under friendly names
-    doc.registerFont('Invoice-Regular', regularFontBuffer);
-    doc.registerFont('Invoice-Bold', boldFontBuffer);
+  // 🖼 Logo
+  try {
+    const logoBuffer = await fetchImageBuffer('https://i.imgur.com/oFa7Bqt.jpeg');
+    doc.image(logoBuffer, 50, 40, { width: 100 });
+  } catch (e) {
+    console.warn('⚠️ Logo failed to load');
+  }
 
-    const date     = new Date().toISOString().split('T')[0];
-    const priceExcl= total_price / 1.21;
-    const vat      = priceExcl * 0.21;
+  doc.moveDown(3);
 
-    // 4) Logo
-    fetchBuffer('https://i.imgur.com/oFa7Bqt.jpeg')
-      .then(img => doc.image(img, 50, 45, { width: 80 }))
-      .catch(() => {});
+  // Heading in English
+  doc.font('Helvetica-Bold').fillColor('#d81b60').fontSize(20).text('INVOICE', { align: 'center' });
+  doc.moveDown();
 
-    // 5) Heading
-    doc
-      .font('Invoice-Bold')
-      .fillColor('#d81b60')
-      .fontSize(24)
-      .text('SĄSKAITA FAKTŪRA', 0, 60, { align: 'center' });
+  // Meta
+  doc.fillColor('#000').font('Helvetica').fontSize(12)
+    .text(`Date: ${date}`, { continued: true })
+    .text(`   Order No.: ${payment_reference}`);
+  doc.moveDown();
 
-    // 6) Invoice metadata
-    doc
-      .font('Invoice-Regular')
-      .fillColor('#000')
-      .fontSize(10)
-      .text(`Data: ${date}`, 50, 120)
-      .text(`Užsakymo Nr.: ${payment_reference}`, 50, 135);
+  // Seller
+  doc.font('Helvetica-Bold').text('Seller:', { underline: true });
+  doc.font('Helvetica')
+    .text('Beauty by Ella Ltd.')
+    .text('Company ID: 305232614')
+    .text('VAT Number: LT100017540118')
+    .text('Giraitės St. 60A-2, Trakai District');
+  doc.moveDown();
 
-    // 7) Seller
-    doc
-      .font('Invoice-Bold').text('Pardavėjas:', 50, 160)
-      .font('Invoice-Regular')
-      .text('Stiklų keitimas automobiliams, MB', 50, 175)
-      .text('Įm. kodas: 305232614')
-      .text('PVM kodas: LT100017540118')
-      .text('Giraitės g. 60A-2, Trakų r.');
+  // Buyer
+  doc.font('Helvetica-Bold').text('Buyer:', { underline: true });
+  doc.font('Helvetica')
+    .text(customer_name)
+    .text(parsedAddress)
+    .text(customer_email)
+    .text(phone);
+  doc.moveDown();
 
-    // 8) Buyer
-    doc
-      .font('Invoice-Bold').text('Pirkėjas:', 300, 160)
-      .font('Invoice-Regular')
-      .text(customer_name, 300, 175)
-      .text(parsedAddress)
-      .text(customer_email)
-      .text(phone);
+  // Products header
+  doc.font('Helvetica-Bold').fillColor('#d81b60').text('Products:', { underline: true });
+  doc.moveDown(0.5);
+  doc.font('Helvetica').fillColor('#000');
 
-    // 9) Separator
-    doc
-      .moveTo(50, 250)
-      .lineTo(545, 250)
-      .lineWidth(1)
-      .strokeColor('#eeeeee')
-      .stroke();
+  if (Array.isArray(products)) {
+    products.forEach(p => {
+      doc.text(`• ${p.name} x ${p.quantity} – €${(+p.price).toFixed(2)}`);
+    });
+  } else {
+    doc.text(String(products));
+  }
 
-    // 10) Table Header
-    const tableTop = 270;
-    const colX = { item: 50, qty: 300, unit: 380, sum: 470 };
-    doc
-      .font('Invoice-Bold')
-      .fillColor('#d81b60')
-      .fontSize(12)
-      .text('Prekė', colX.item, tableTop)
-      .text('Kiekis', colX.qty, tableTop)
-      .text('Vnt. kaina', colX.unit, tableTop)
-      .text('Suma', colX.sum, tableTop);
+  // Totals in English
+  doc.moveDown(1.5).fontSize(12);
+  doc.text(`Price excl. VAT:`, 360, doc.y, { continued: true })
+     .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
+  doc.text(`VAT (21%):`, 360, doc.y, { continued: true })
+     .text(`€${vat.toFixed(2)}`, { align: 'right' });
+  doc.font('Helvetica-Bold').fillColor('#d81b60')
+     .text(`Total:`, 360, doc.y, { continued: true })
+     .text(`€${(+total_price).toFixed(2)}`, { align: 'right' });
 
-    // 11) Table Rows
-    doc.font('Invoice-Regular').fillColor('#000').fontSize(10);
-    let y = tableTop + 20;
-    (Array.isArray(products) ? products : [{ name: products, qty: 1, price: total_price }])
-      .forEach(p => {
-        doc
-          .text(p.name, colX.item, y)
-          .text(p.qty.toString(), colX.qty, y)
-          .text(`€${parseFloat(p.price).toFixed(2)}`, colX.unit, y)
-          .text(`€${(p.qty * p.price).toFixed(2)}`, colX.sum, y);
-        y += 20;
-      });
-
-    // 12) Totals
-    y += 20;
-    doc
-      .font('Invoice-Regular')
-      .fontSize(10)
-      .text('Be PVM:', colX.unit, y, { continued: true })
-      .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
-    y += 15;
-    doc
-      .text('PVM (21%):', colX.unit, y, { continued: true })
-      .text(`€${vat.toFixed(2)}`, { align: 'right' });
-    y += 15;
-    doc
-      .font('Invoice-Bold')
-      .fillColor('#d81b60')
-      .text('Iš viso:', colX.unit, y, { continued: true })
-      .text(`€${total_price.toFixed(2)}`, { align: 'right' });
-
-    doc.end();
-  });
+  doc.end();
+  return Buffer.concat(buffers);
 }
 
 module.exports = async (req, res) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(200).end();
   }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Only POST requests allowed' });
   }
@@ -162,9 +121,8 @@ module.exports = async (req, res) => {
       total_price
     } = req.body;
 
-    const parsedAddress = shipping_address || '';
+    const parsedAddress = String(shipping_address || '');
 
-    // Generate PDF
     const pdfBuffer = await createInvoicePdf({
       payment_reference,
       customer_name,
@@ -175,19 +133,6 @@ module.exports = async (req, res) => {
       total_price
     });
 
-    // Email HTML
-    const html = `
-      <div style="font-family: Arial, sans-serif; color: #333; line-height:1.5;">
-        <img src="https://i.imgur.com/oFa7Bqt.jpeg" width="120" style="border-radius:8px; margin-bottom:20px;" />
-        <h2 style="color:#d81b60; margin-bottom:10px;">Jūsų užsakymas #${payment_reference} patvirtintas!</h2>
-        <p>Sveiki <strong>${customer_name}</strong>,</p>
-        <p>Dėkojame, kad pasirinkote <strong>Beauty by Ella</strong>! Jūsų užsakymas buvo sėkmingai priimtas ir apdorotas. Prisegame sąskaitą faktūrą PDF formatu.</p>
-        <p>Jei turite klausimų ar reikia pagalbos, rašykite mums el. paštu <a href="mailto:info@beautybyella.lt">info@beautybyella.lt</a> arba skambinkite +370 656 25323.</p>
-        <p>Su meile,<br/><strong>Beauty by Ella</strong> 💖</p>
-      </div>
-    `;
-
-    // Send Mail
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
@@ -198,19 +143,28 @@ module.exports = async (req, res) => {
       }
     });
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"Beauty by Ella" <info@beautybyella.lt>`,
       to,
-      subject: `Jūsų užsakymas #${payment_reference} patvirtintas!`,
-      html,
-      attachments: [
-        { filename: 'invoice.pdf', content: pdfBuffer, contentType: 'application/pdf' }
-      ]
+      subject: 'Jūsų užsakymas patvirtintas!',
+      html: `
+        <div style="font-family: sans-serif; font-size: 15px; color: #333;">
+          <img src="https://i.imgur.com/oFa7Bqt.jpeg" alt="Beauty by Ella" style="width: 100px; border-radius: 8px; margin-bottom: 15px;" />
+          <p style="margin-bottom: 12px;">Sveiki, <strong>${customer_name}</strong>,</p>
+          <p>Jūsų užsakymas buvo sėkmingai priimtas! Prisegame sąskaitą faktūrą PDF formatu.</p>
+          <p style="margin-top: 30px;">Su meile,<br/><strong>Beauty by Ella</strong> 💖</p>
+        </div>
+      `,
+      attachments: [{
+        filename: 'invoice.pdf',
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }]
     });
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, messageId: info.messageId });
   } catch (err) {
     console.error('❌ Email sending failed:', err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || 'Email send failed' });
   }
 };
