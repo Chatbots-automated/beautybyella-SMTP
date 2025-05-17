@@ -6,7 +6,6 @@
   },
   "dependencies": {
     "nodemailer": "^6.9.4",
-    "pdfkit": "^0.13.0",
-    "get-stream": "^7.0.0"
+    "pdfkit": "^0.13.0"
   }
 }
