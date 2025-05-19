@@ -1,3 +1,5 @@
+const fs          = require('fs');
+const path        = require('path');
 const PDFDocument = require('pdfkit');
 const nodemailer  = require('nodemailer');
 const https       = require('https');
@@ -11,8 +13,9 @@ function fetchBuffer(url) {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
-        console.log(`🔗 fetchBuffer: downloaded ${chunks.reduce((s, b) => s + b.length, 0)} bytes from ${url}`);
-        resolve(Buffer.concat(chunks));
+        const buf = Buffer.concat(chunks);
+        console.log(`🔗 fetchBuffer: downloaded ${buf.length} bytes from ${url}`);
+        resolve(buf);
       });
       res.on('error', err => {
         console.error(`❌ fetchBuffer error for ${url}:`, err);
@@ -37,14 +40,25 @@ async function createInvoicePdf({
   console.log('📄 createInvoicePdf: start');
   console.log({ payment_reference, customer_name, customer_email, phone, total_price, products });
 
+  // 1) Load local Roboto TTFs
+  const fontsDir = path.join(process.cwd(), 'fonts');
+  const robotoRegPath  = path.join(fontsDir, 'Roboto-Regular.ttf');
+  const robotoBoldPath = path.join(fontsDir, 'Roboto-Bold.ttf');
+  console.log('📄 Registering fonts from:', fontsDir);
+
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   const buffers = [];
   doc.on('data', chunk => buffers.push(chunk));
-  doc.on('end', () => console.log('📄 createInvoicePdf: PDF stream ended'));
+  doc.on('end',   () => console.log('📄 createInvoicePdf: PDF stream ended'));
 
-  const date = new Date().toISOString().split('T')[0];
-  const priceExcl = +total_price / 1.21;
-  const vat = priceExcl * 0.21;
+  // Register embedded fonts
+  doc.registerFont('Reg',  robotoRegPath);
+  doc.registerFont('Bold', robotoBoldPath);
+
+  // Calculate totals
+  const date     = new Date().toISOString().split('T')[0];
+  const priceExcl= +total_price / 1.21;
+  const vat      = priceExcl * 0.21;
   console.log(`📄 Invoice calculations — date=${date}, priceExcl=${priceExcl.toFixed(2)}, VAT=${vat.toFixed(2)}`);
 
   // 🖼 Logo
@@ -57,39 +71,48 @@ async function createInvoicePdf({
     console.warn('⚠️ Logo failed to load:', e.message);
   }
 
+  // Move down from logo
   doc.moveDown(3);
-  doc.font('Helvetica-Bold')
-     .fillColor('#d81b60')
-     .fontSize(20)
-     .text('INVOICE', { align: 'center' });
+
+  // 2) PDF CONTENT (all in Roboto!)
+  // Heading (Lithuanian)
+  doc
+    .font('Bold').fillColor('#d81b60').fontSize(20)
+    .text('SĄSKAITA FAKTŪRA', { align: 'center' });
   doc.moveDown();
 
-  doc.fillColor('#000')
-     .font('Helvetica')
-     .fontSize(12)
-     .text(`Date: ${date}`, { continued: true })
-     .text(`   Order No.: ${payment_reference}`);
+  // Metadata
+  doc
+    .font('Reg').fillColor('#000').fontSize(12)
+    .text(`Data: ${date}`, { continued: true })
+    .text(`   Užsakymo Nr.: ${payment_reference}`);
   doc.moveDown();
 
-  doc.font('Helvetica-Bold').text('Seller:', { underline: true });
-  doc.font('Helvetica')
-     .text('Beauty by Ella Ltd.')
-     .text('Company ID: 305232614')
-     .text('VAT Number: LT100017540118')
-     .text('Giraitės St. 60A-2, Trakai District');
+  // Seller
+  doc
+    .font('Bold').text('Pardavėjas:', { underline: true })
+    .font('Reg')
+    .text('Beauty by Ella Ltd.')
+    .text('Company ID: 305232614')
+    .text('VAT kodas: LT100017540118')
+    .text('Giraitės g. 60A-2, Trakų r.');
   doc.moveDown();
 
-  doc.font('Helvetica-Bold').text('Buyer:', { underline: true });
-  doc.font('Helvetica')
-     .text(customer_name)
-     .text(parsedAddress)
-     .text(customer_email)
-     .text(phone);
+  // Buyer
+  doc
+    .font('Bold').text('Pirkėjas:', { underline: true })
+    .font('Reg')
+    .text(customer_name)
+    .text(parsedAddress)
+    .text(customer_email)
+    .text(phone);
   doc.moveDown();
 
-  doc.font('Helvetica-Bold').fillColor('#d81b60').text('Products:', { underline: true });
+  // Products (Lithuanian)
+  doc
+    .font('Bold').fillColor('#d81b60').text('Produktai:', { underline: true });
   doc.moveDown(0.5);
-  doc.font('Helvetica').fillColor('#000');
+  doc.font('Reg').fillColor('#000');
   if (Array.isArray(products)) {
     products.forEach(p => {
       doc.text(`• ${p.name} x ${p.quantity} – €${(+p.price).toFixed(2)}`);
@@ -98,36 +121,41 @@ async function createInvoicePdf({
     doc.text(String(products));
   }
 
+  // Totals (Lithuanian)
   doc.moveDown(1.5).fontSize(12);
-  doc.text(`Price excl. VAT:`, 360, doc.y, { continued: true })
-     .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
-  doc.text(`VAT (21%):`, 360, doc.y, { continued: true })
-     .text(`€${vat.toFixed(2)}`, { align: 'right' });
-  doc.font('Helvetica-Bold')
-     .fillColor('#d81b60')
-     .text(`Total:`, 360, doc.y, { continued: true })
-     .text(`€${(+total_price).toFixed(2)}`, { align: 'right' });
+  doc
+    .font('Reg').fillColor('#000')
+    .text(`Kaina be PVM:`, 360, doc.y, { continued: true })
+    .text(`€${priceExcl.toFixed(2)}`, { align: 'right' });
+  doc
+    .text(`PVM (21%):`, 360, doc.y, { continued: true })
+    .text(`€${vat.toFixed(2)}`, { align: 'right' });
+  doc
+    .font('Bold').fillColor('#d81b60')
+    .text(`Bendra suma:`, 360, doc.y, { continued: true })
+    .text(`€${(+total_price).toFixed(2)}`, { align: 'right' });
 
   console.log('📄 Finalizing PDF...');
   doc.end();
 
-  // Wait for 'end' then return buffer
-  return await new Promise(resolve => {
+  // Wait for PDF to finish then return buffer
+  return new Promise(resolve => {
     doc.on('end', () => {
       const pdfBuffer = Buffer.concat(buffers);
-      console.log(`📄 PDF generated, ${pdfBuffer.length} total bytes`);
+      console.log(`📄 PDF generated, ${pdfBuffer.length} bytes`);
       resolve(pdfBuffer);
     });
   });
 }
 
 module.exports = async (req, res) => {
-  console.log(`➡️  Incoming request: ${req.method} ${req.url}`);
+  console.log(`➡️ Incoming request: ${req.method} ${req.url}`);
   if (req.method === 'OPTIONS') {
-    console.log('↩️  OPTIONS preflight');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    console.log('↩️ OPTIONS preflight');
+    res
+      .setHeader('Access-Control-Allow-Origin', '*')
+      .setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+      .setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(200).end();
   }
   if (req.method !== 'POST') {
@@ -161,7 +189,7 @@ module.exports = async (req, res) => {
       total_price
     });
 
-    console.log(`✉️  Preparing to send email to: ${to}`);
+    console.log(`✉️ Preparing to send email to: ${to}`);
     const transporter = nodemailer.createTransport({
       host: 'smtp.hostinger.com',
       port: 465,
@@ -192,7 +220,7 @@ module.exports = async (req, res) => {
       }]
     };
 
-    console.log('✉️  Sending mail with options:', { to: mailOptions.to, subject: mailOptions.subject, attachments: mailOptions.attachments.length });
+    console.log('✉️ Sending mail with options:', { to, subject: mailOptions.subject });
     const info = await transporter.sendMail(mailOptions);
     console.log('✅ Email sent:', info);
 
