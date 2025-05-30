@@ -35,12 +35,12 @@ async function createInvoicePdf({
   customer_email,
   phone,
   products,
-  total_price
+  total_price,
+  invoice_number
 }) {
   console.log('📄 createInvoicePdf: start');
   console.log({ payment_reference, customer_name, customer_email, phone, total_price, products });
 
-  // 1) Load local Roboto TTFs
   const fontsDir = path.join(process.cwd(), 'fonts');
   const robotoRegPath  = path.join(fontsDir, 'Roboto-Regular.ttf');
   const robotoBoldPath = path.join(fontsDir, 'Roboto-Bold.ttf');
@@ -51,17 +51,14 @@ async function createInvoicePdf({
   doc.on('data', chunk => buffers.push(chunk));
   doc.on('end',   () => console.log('📄 createInvoicePdf: PDF stream ended'));
 
-  // Register embedded fonts
   doc.registerFont('Reg',  robotoRegPath);
   doc.registerFont('Bold', robotoBoldPath);
 
-  // Calculate totals
   const date     = new Date().toISOString().split('T')[0];
   const priceExcl= +total_price / 1.21;
   const vat      = priceExcl * 0.21;
   console.log(`📄 Invoice calculations — date=${date}, priceExcl=${priceExcl.toFixed(2)}, VAT=${vat.toFixed(2)}`);
 
-  // 🖼 Logo
   console.log('📄 Attempting to fetch logo...');
   try {
     const logoBuffer = await fetchBuffer('https://i.imgur.com/oFa7Bqt.jpeg');
@@ -71,24 +68,20 @@ async function createInvoicePdf({
     console.warn('⚠️ Logo failed to load:', e.message);
   }
 
-  // Move down from logo
   doc.moveDown(3);
 
-  // 2) PDF CONTENT (all in Roboto!)
-  // Heading (Lithuanian)
   doc
     .font('Bold').fillColor('#d81b60').fontSize(20)
     .text('SĄSKAITA FAKTŪRA', { align: 'center' });
   doc.moveDown();
 
-  // Metadata
   doc
     .font('Reg').fillColor('#000').fontSize(12)
     .text(`Data: ${date}`, { continued: true })
-    .text(`   Užsakymo Nr.: ${payment_reference}`);
+    .text(`   Užsakymo Nr.: ${payment_reference}`)
+    .text(`   Sąskaitos numeris: ${invoice_number}`);
   doc.moveDown();
 
-  // Seller
   doc
     .font('Bold').text('Pardavėjas:', { underline: true })
     .font('Reg')
@@ -98,7 +91,6 @@ async function createInvoicePdf({
     .text('Giraitės g. 60A-2, Trakų r.');
   doc.moveDown();
 
-  // Buyer
   doc
     .font('Bold').text('Pirkėjas:', { underline: true })
     .font('Reg')
@@ -108,7 +100,6 @@ async function createInvoicePdf({
     .text(phone);
   doc.moveDown();
 
-  // Products (Lithuanian)
   doc
     .font('Bold').fillColor('#d81b60').text('Produktai:', { underline: true });
   doc.moveDown(0.5);
@@ -121,7 +112,6 @@ async function createInvoicePdf({
     doc.text(String(products));
   }
 
-  // Totals (Lithuanian)
   doc.moveDown(1.5).fontSize(12);
   doc
     .font('Reg').fillColor('#000')
@@ -138,7 +128,6 @@ async function createInvoicePdf({
   console.log('📄 Finalizing PDF...');
   doc.end();
 
-  // Wait for PDF to finish then return buffer
   return new Promise(resolve => {
     doc.on('end', () => {
       const pdfBuffer = Buffer.concat(buffers);
@@ -173,7 +162,8 @@ module.exports = async (req, res) => {
       shipping_address,
       payment_reference,
       products,
-      total_price
+      total_price,
+      invoice_number
     } = req.body;
 
     const parsedAddress = String(shipping_address || '');
@@ -186,7 +176,8 @@ module.exports = async (req, res) => {
       customer_email,
       phone,
       products,
-      total_price
+      total_price,
+      invoice_number
     });
 
     console.log(`✉️ Preparing to send email to: ${to}`);
@@ -210,6 +201,7 @@ module.exports = async (req, res) => {
           <img src="https://i.imgur.com/oFa7Bqt.jpeg" style="width:100px; border-radius:8px; margin-bottom:15px;" />
           <p>Sveiki, <strong>${customer_name}</strong>,</p>
           <p>Jūsų užsakymas buvo sėkmingai priimtas! Prisegame sąskaitą faktūrą PDF formatu.</p>
+          <p><strong>Sąskaitos numeris: ${invoice_number}</strong></p>
           <p>Su meile,<br/><strong>Beauty by Ella</strong> 💖</p>
         </div>
       `,
