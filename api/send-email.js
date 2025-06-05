@@ -122,13 +122,15 @@ async function createInvoicePdf({
   // 3) PRODUCT TABLE HEADER (Lithuanian)
   // ────────────────────────────────────────────────────────────────────────────
   const tableTop = doc.y;
+
+  // Adjusted column positions so that “KAINA su PVM” fits fully on page:
   const itemX   = 50;   // “Pavadinimas” column start
   const qtyX    = 250;  // “Kiekis” column start
   const priceX  = 350;  // “Kaina (be PVM)” column start
   const vatX    = 450;  // “PVM” column start
-  const incX    = 530;  // “Kaina su PVM” column start
+  const incX    = 490;  // “Kaina su PVM” column start (moved left from 530)
 
-  // Draw header background (brown)
+  // Draw header background (brown), slightly taller (22px) to give breathing room
   doc
     .rect(itemX - 2, tableTop - 2, 545 - itemX, 22) // from itemX to right margin (~545)
     .fill('#8B4513');
@@ -144,7 +146,7 @@ async function createInvoicePdf({
     .text('PVM',              vatX + 5,   tableTop + 2)
     .text('KAINA su PVM',     incX + 5,   tableTop + 2);
 
-  // Draw vertical lines between columns
+  // Draw vertical lines between columns (white) to delineate header cells
   doc
     .strokeColor('#FFFFFF')
     .lineWidth(0.5)
@@ -159,10 +161,10 @@ async function createInvoicePdf({
   // ────────────────────────────────────────────────────────────────────────────
   // 4) PRODUCT TABLE ROWS (alternating shade + word-wrap for “Pavadinimas”)
   // ────────────────────────────────────────────────────────────────────────────
-  const colNameWidth = qtyX - itemX - 10; // width for “Pavadinimas” minus small padding
+  const colNameWidth = qtyX - itemX - 10; // width for “Pavadinimas” minus 10px padding
   let rowY = tableTop + 22;              // start right below header
 
-  // If products is already an array, use it. Otherwise fallback to single-item
+  // If products is already an array, use it; otherwise fallback to a single item
   const items = Array.isArray(products)
     ? products
     : [{ name: String(products), quantity: 1, price: total_price }];
@@ -171,63 +173,63 @@ async function createInvoicePdf({
     const p = items[i];
     const name      = p.name;
     const qty       = p.quantity;
-    const unitNet   = p.price;
-    const lineNet   = qty * unitNet;
-    const lineVat   = lineNet * 0.21;
-    const lineGross = lineNet * 1.21;
+    const unitNet   = p.price;            // unit price (net, be PVM)
+    const lineNet   = qty * unitNet;      // row‐net total
+    const lineVat   = lineNet * 0.21;     // 21% VAT
+    const lineGross = lineNet * 1.21;     // net + VAT
 
-    // Format with comma decimal
+    // Format numbers with commas
     const priceNetStr = unitNet.toFixed(2).replace('.', ',');
     const vatStrAmt   = lineVat.toFixed(2).replace('.', ',');
     const grossStrAmt = lineGross.toFixed(2).replace('.', ',');
 
-    // 1) Measure required height for name
+    // 1) Measure required height for the wrapped product name
     doc.font('Reg').fontSize(10);
     const nameHeight = doc.heightOfString(name, {
       width: colNameWidth,
       align: 'left'
     });
-    const rowHeight = nameHeight + 6; // +6px vertical padding
+    const rowHeight = nameHeight + 6; // add 6px vertical padding
 
-    // 2) Alternating row shade
+    // 2) Alternating row background for readability
     if (i % 2 === 1) {
       doc
         .rect(itemX - 2, rowY - 2, 545 - itemX, rowHeight)
         .fill('#F5F5F5')
-        .fillColor('#000');
+        .fillColor('#000'); // reset fill to black
     }
 
-    // 3) Horizontal borders for this row
+    // 3) Draw horizontal borders (light gray) above and below this row
     doc
       .strokeColor('#DDDDDD')
       .lineWidth(0.5)
       .moveTo(itemX - 2, rowY - 2).lineTo(545, rowY - 2).stroke()   // top border
       .moveTo(itemX - 2, rowY + rowHeight - 2).lineTo(545, rowY + rowHeight - 2).stroke(); // bottom
 
-    // Vertical separators
+    // Draw vertical dividers between columns
     doc
       .moveTo(qtyX - 2, rowY - 2).lineTo(qtyX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(priceX - 2, rowY - 2).lineTo(priceX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(vatX - 2, rowY - 2).lineTo(vatX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(incX - 2, rowY - 2).lineTo(incX - 2, rowY + rowHeight - 2).stroke();
 
-    // 4) Draw name with wrap
+    // 4) Draw the “Pavadinimas” cell (wrapped text)
     doc.text(name, itemX + 5, rowY, {
       width: colNameWidth,
       align: 'left'
     });
 
-    // 5) Draw other columns at same Y
-    doc.text(qty.toString(),       qtyX + 5,   rowY);
-    doc.text(`€${priceNetStr}`,    priceX + 5, rowY);
-    doc.text(`€${vatStrAmt}`,      vatX + 5,   rowY);
-    doc.text(`€${grossStrAmt}`,    incX + 5,   rowY);
+    // 5) Draw the remaining columns at the same Y
+    doc.text(qty.toString(),          qtyX + 5,   rowY);
+    doc.text(`€${priceNetStr}`,       priceX + 5, rowY);
+    doc.text(`€${vatStrAmt}`,         vatX + 5,   rowY);
+    doc.text(`€${grossStrAmt}`,       incX + 5,   rowY);
 
-    // 6) Advance Y by rowHeight
+    // 6) Advance rowY by the computed rowHeight
     rowY += rowHeight;
   }
 
-  // Move below the last row before totals
+  // Move the “cursor” below the last row + a bit of padding
   doc.y = rowY + 10;
 
   // ────────────────────────────────────────────────────────────────────────────
