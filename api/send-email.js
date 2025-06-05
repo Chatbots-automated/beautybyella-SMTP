@@ -122,15 +122,15 @@ async function createInvoicePdf({
   // 3) PRODUCT TABLE HEADER (Lithuanian)
   // ────────────────────────────────────────────────────────────────────────────
   const tableTop = doc.y;
-  const itemX   = 50;   // Pavadinimas column start
-  const qtyX    = 260;  // Kiekis column start
-  const priceX  = 350;  // Kaina (be PVM) column start (shifted a bit right)
-  const vatX    = 430;  // PVM column start (shifted)
-  const incX    = 510;  // Kaina su PVM column start (shifted left to fit)
+  const itemX   = 50;   // “Pavadinimas” column start
+  const qtyX    = 250;  // “Kiekis” column start
+  const priceX  = 350;  // “Kaina (be PVM)” column start
+  const vatX    = 450;  // “PVM” column start
+  const incX    = 530;  // “Kaina su PVM” column start
 
   // Draw header background (brown)
   doc
-    .rect(itemX - 2, tableTop - 2, 545 - itemX, 20) // from itemX to right margin (≈545)
+    .rect(itemX - 2, tableTop - 2, 545 - itemX, 22) // from itemX to right margin (~545)
     .fill('#8B4513');
 
   // Header text in white
@@ -139,96 +139,95 @@ async function createInvoicePdf({
     .font('Bold')
     .fontSize(10)
     .text('PAVADINIMAS',      itemX + 5, tableTop + 2, { width: qtyX - itemX - 10 })
-    .text('KIEKIS',           qtyX,      tableTop + 2)
-    .text('KAINA (be PVM)',   priceX,    tableTop + 2)
-    .text('PVM',              vatX,      tableTop + 2)
-    .text('KAINA su PVM',     incX,      tableTop + 2);
+    .text('KIEKIS',           qtyX + 5,  tableTop + 2)
+    .text('KAINA (be PVM)',   priceX + 5, tableTop + 2)
+    .text('PVM',              vatX + 5,   tableTop + 2)
+    .text('KAINA su PVM',     incX + 5,   tableTop + 2);
 
   // Draw vertical lines between columns
   doc
     .strokeColor('#FFFFFF')
     .lineWidth(0.5)
-    .moveTo(qtyX - 2, tableTop - 2).lineTo(qtyX - 2, tableTop + 18).stroke()
-    .moveTo(priceX - 2, tableTop - 2).lineTo(priceX - 2, tableTop + 18).stroke()
-    .moveTo(vatX - 2, tableTop - 2).lineTo(vatX - 2, tableTop + 18).stroke()
-    .moveTo(incX - 2, tableTop - 2).lineTo(incX - 2, tableTop + 18).stroke();
+    .moveTo(qtyX - 2, tableTop - 2).lineTo(qtyX - 2, tableTop + 20).stroke()
+    .moveTo(priceX - 2, tableTop - 2).lineTo(priceX - 2, tableTop + 20).stroke()
+    .moveTo(vatX - 2, tableTop - 2).lineTo(vatX - 2, tableTop + 20).stroke()
+    .moveTo(incX - 2, tableTop - 2).lineTo(incX - 2, tableTop + 20).stroke();
 
   // Reset fill color to black for rows
   doc.fillColor('#000').font('Reg').fontSize(10);
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 4) PRODUCT TABLE ROWS (with alternating shading and word‐wrap for “Pavadinimas”)
+  // 4) PRODUCT TABLE ROWS (alternating shade + word-wrap for “Pavadinimas”)
   // ────────────────────────────────────────────────────────────────────────────
   const colNameWidth = qtyX - itemX - 10; // width for “Pavadinimas” minus small padding
-  let rowY = tableTop + 20;
+  let rowY = tableTop + 22;              // start right below header
 
-  // If products is already an array, use it. Otherwise fallback to single‐item
+  // If products is already an array, use it. Otherwise fallback to single-item
   const items = Array.isArray(products)
     ? products
     : [{ name: String(products), quantity: 1, price: total_price }];
 
-  // Iterate each row
   for (let i = 0; i < items.length; i++) {
     const p = items[i];
     const name      = p.name;
     const qty       = p.quantity;
-    const unitNet   = p.price;           
-    const lineNet   = qty * unitNet;     
-    const lineVat   = lineNet * 0.21;    
-    const lineGross = lineNet * 1.21;    
+    const unitNet   = p.price;
+    const lineNet   = qty * unitNet;
+    const lineVat   = lineNet * 0.21;
+    const lineGross = lineNet * 1.21;
 
-    // Format numbers with comma decimal:
-    const priceNetStr = unitNet.toFixed(2).replace('.', ',');   
-    const vatStrAmt   = lineVat.toFixed(2).replace('.', ',');   
-    const grossStrAmt = lineGross.toFixed(2).replace('.', ','); 
+    // Format with comma decimal
+    const priceNetStr = unitNet.toFixed(2).replace('.', ',');
+    const vatStrAmt   = lineVat.toFixed(2).replace('.', ',');
+    const grossStrAmt = lineGross.toFixed(2).replace('.', ',');
 
-    // 1) Measure how tall the wrapped name will be given our column width
+    // 1) Measure required height for name
     doc.font('Reg').fontSize(10);
     const nameHeight = doc.heightOfString(name, {
       width: colNameWidth,
       align: 'left'
     });
-    const rowHeight = nameHeight + 6; // some vertical padding
+    const rowHeight = nameHeight + 6; // +6px vertical padding
 
     // 2) Alternating row shade
     if (i % 2 === 1) {
       doc
         .rect(itemX - 2, rowY - 2, 545 - itemX, rowHeight)
         .fill('#F5F5F5')
-        .fillColor('#000'); // reset fill to black
+        .fillColor('#000');
     }
 
-    // 3) Draw cell borders (light gray) around this row
+    // 3) Horizontal borders for this row
     doc
-      .strokeColor('#EEEEEE')
+      .strokeColor('#DDDDDD')
       .lineWidth(0.5)
       .moveTo(itemX - 2, rowY - 2).lineTo(545, rowY - 2).stroke()   // top border
-      .moveTo(itemX - 2, rowY + rowHeight - 2).lineTo(545, rowY + rowHeight - 2).stroke(); // bottom border
+      .moveTo(itemX - 2, rowY + rowHeight - 2).lineTo(545, rowY + rowHeight - 2).stroke(); // bottom
 
-    // Draw vertical dividers
+    // Vertical separators
     doc
       .moveTo(qtyX - 2, rowY - 2).lineTo(qtyX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(priceX - 2, rowY - 2).lineTo(priceX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(vatX - 2, rowY - 2).lineTo(vatX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(incX - 2, rowY - 2).lineTo(incX - 2, rowY + rowHeight - 2).stroke();
 
-    // 4) Draw “Pavadinimas” inside its own cell, with wrap
+    // 4) Draw name with wrap
     doc.text(name, itemX + 5, rowY, {
       width: colNameWidth,
       align: 'left'
     });
 
-    // 5) Draw the remaining columns at the same rowY
-    doc.text(qty.toString(),       qtyX,   rowY);
-    doc.text(`€${priceNetStr}`,    priceX, rowY);
-    doc.text(`€${vatStrAmt}`,      vatX,   rowY);
-    doc.text(`€${grossStrAmt}`,    incX,   rowY);
+    // 5) Draw other columns at same Y
+    doc.text(qty.toString(),       qtyX + 5,   rowY);
+    doc.text(`€${priceNetStr}`,    priceX + 5, rowY);
+    doc.text(`€${vatStrAmt}`,      vatX + 5,   rowY);
+    doc.text(`€${grossStrAmt}`,    incX + 5,   rowY);
 
-    // 6) Advance rowY by the (wrapped) row height
+    // 6) Advance Y by rowHeight
     rowY += rowHeight;
   }
 
-  // Move the “cursor” below the last row + a little padding:
+  // Move below the last row before totals
   doc.y = rowY + 10;
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -252,7 +251,6 @@ async function createInvoicePdf({
   console.log('📄 Finalizing PDF...');
   doc.end();
 
-  // Wait for PDF to finish then return buffer
   return new Promise((resolve) => {
     doc.on('end', () => {
       const pdfBuffer = Buffer.concat(buffers);
