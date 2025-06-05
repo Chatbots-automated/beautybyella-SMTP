@@ -114,15 +114,15 @@ async function createInvoicePdf({
   // 3) PRODUCT TABLE HEADER (Lithuanian)  
   // ────────────────────────────────────────────────────────────────────────────
   const tableTop = doc.y;
-  const itemX = 50;
-  const qtyX  = 260;
-  const unitX = 320;
-  const totalX= 400;
-  const vatX   = 480;
+  const itemX   = 50;   // Pavadinimas column start
+  const qtyX    = 260;  // Kiekis column start
+  const priceX  = 340;  // Kaina (be PVM) column start
+  const vatX    = 420;  // PVM column start
+  const incX    = 500;  // Kaina su PVM column start
 
   // Draw header background (brown)
   doc
-    .rect(itemX - 2, tableTop - 2, 495, 20)
+    .rect(itemX - 2, tableTop - 2, 545 - itemX, 20) // full width from itemX to right margin (≈545)
     .fill('#8B4513');
 
   // Header text in white
@@ -130,64 +130,72 @@ async function createInvoicePdf({
     .fillColor('#FFFFFF')
     .font('Bold')
     .fontSize(10)
-    .text('PAVADINIMAS', itemX + 5, tableTop + 2)
-    .text('KIEKIS',      qtyX,      tableTop + 2)
-    .text('KAINA',       unitX,     tableTop + 2)
-    .text('VISO',        totalX,    tableTop + 2)
-    .text('PVM',         vatX,      tableTop + 2);
+    .text('PAVADINIMAS',       itemX + 5, tableTop + 2, { width: qtyX - itemX - 10 })
+    .text('KIEKIS',            qtyX,      tableTop + 2)
+    .text('KAINA (be PVM)',     priceX,   tableTop + 2)
+    .text('PVM',               vatX,      tableTop + 2)
+    .text('KAINA su PVM',      incX,      tableTop + 2);
 
   // Reset fill color to black for rows
   doc.fillColor('#000').font('Reg').fontSize(10);
 
-  // 4) PRODUCT TABLE ROWS  
+  // ────────────────────────────────────────────────────────────────────────────
+  // 4) PRODUCT TABLE ROWS (with word‐wrap for “Pavadinimas”)  
+  // ────────────────────────────────────────────────────────────────────────────
+  const colNameWidth = qtyX - itemX - 10; // width for “Pavadinimas” minus small padding
   let rowY = tableTop + 20;
-  if (Array.isArray(products)) {
-    products.forEach(p => {
-      const name      = p.name;
-      const qty       = p.quantity;
-      const price     = p.price;
-      const lineTotal = qty * price;
-      const lineVat   = lineTotal * 0.21;
 
-      // Format prices with comma decimal
-      const priceStr  = price.toFixed(2).replace('.', ',');
-      const totalStr  = lineTotal.toFixed(2).replace('.', ',');
-      // In example: "139,23 (21.00%)" → VAT amount comma + percent in parentheses
-      const vatStr    = `${lineVat.toFixed(2).replace('.', ',')} (21.00%)`;
+  // If products is an array, iterate; otherwise fallback to single‐item logic
+  const items = Array.isArray(products)
+    ? products
+    : [{ name: String(products), quantity: 1, price: total_price }];
 
-      doc
-        .text(name,            itemX + 5, rowY)
-        .text(qty.toString(),  qtyX,      rowY)
-        .text(`€${priceStr}`,  unitX,     rowY)
-        .text(`€${totalStr}`,  totalX,    rowY)
-        .text(vatStr,          vatX,      rowY);
-      rowY += 20;
-    });
-  } else {
-    // Single product fallback
-    const name      = String(products);
-    const qty       = 1;
-    const price     = total_price;
-    const lineTotal = price;
+  for (const p of items) {
+    const name      = p.name;
+    const qty       = p.quantity;
+    const price     = p.price;
+    const lineTotal = qty * price;
     const lineVat   = lineTotal * 0.21;
+    const priceEx   = price;           // price (be PVM)
+    const vatAmt    = lineVat;         // VAT amount
+    const priceInc  = lineTotal;       // price including VAT
 
-    const priceStr  = price.toFixed(2).replace('.', ',');
-    const totalStr  = lineTotal.toFixed(2).replace('.', ',');
-    const vatStr    = `${lineVat.toFixed(2).replace('.', ',')} (21.00%)`;
+    // Format numbers with comma decimal:
+    const priceStr   = priceEx.toFixed(2).replace('.', ',');
+    const vatStrAmt  = vatAmt.toFixed(2).replace('.', ',');
+    const priceIncStr= priceInc.toFixed(2).replace('.', ',');
 
-    doc
-      .text(name,           itemX + 5, rowY)
-      .text(qty.toString(), qtyX,      rowY)
-      .text(`€${priceStr}`, unitX,     rowY)
-      .text(`€${totalStr}`, totalX,    rowY)
-      .text(vatStr,         vatX,      rowY);
-    rowY += 20;
+    // 1) Measure how tall the wrapped name will be given our column width
+    doc.font('Reg').fontSize(10);
+    const nameHeight = doc.heightOfString(name, {
+      width: colNameWidth,
+      align: 'left'
+    });
+    // Add small vertical padding (4px) so text doesn’t touch borders
+    const rowHeight = nameHeight + 4;
+
+    // 2) Draw “Pavadinimas” inside its own cell, with wrap
+    doc.text(name, itemX + 5, rowY, {
+      width: colNameWidth,
+      align: 'left'
+    });
+
+    // 3) Draw the remaining columns at the same rowY
+    doc.text(qty.toString(),         qtyX,    rowY);
+    doc.text(`€${priceStr}`,        priceX,  rowY);
+    doc.text(`€${vatStrAmt}`,        vatX,    rowY);
+    doc.text(`€${priceIncStr}`,      incX,    rowY);
+
+    // 4) Advance rowY by the (wrapped) row height
+    rowY += rowHeight;
   }
 
-  // Move down after table
+  // Move the “cursor” below the last row + a little padding:
   doc.y = rowY + 10;
 
+  // ────────────────────────────────────────────────────────────────────────────
   // 5) TOTALS (Lithuanian)
+  // ────────────────────────────────────────────────────────────────────────────
   doc.moveDown(1.5).fontSize(12);
   doc
     .font('Reg').fillColor('#000')
