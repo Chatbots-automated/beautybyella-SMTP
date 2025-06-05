@@ -124,9 +124,9 @@ async function createInvoicePdf({
   const tableTop = doc.y;
   const itemX   = 50;   // Pavadinimas column start
   const qtyX    = 260;  // Kiekis column start
-  const priceX  = 340;  // Kaina (be PVM) column start
-  const vatX    = 420;  // PVM column start
-  const incX    = 500;  // Kaina su PVM column start
+  const priceX  = 350;  // Kaina (be PVM) column start (shifted a bit right)
+  const vatX    = 430;  // PVM column start (shifted)
+  const incX    = 510;  // Kaina su PVM column start (shifted left to fit)
 
   // Draw header background (brown)
   doc
@@ -138,17 +138,26 @@ async function createInvoicePdf({
     .fillColor('#FFFFFF')
     .font('Bold')
     .fontSize(10)
-    .text('PAVADINIMAS',       itemX + 5, tableTop + 2, { width: qtyX - itemX - 10 })
-    .text('KIEKIS',            qtyX,      tableTop + 2)
-    .text('KAINA (be PVM)',    priceX,    tableTop + 2)
-    .text('PVM',               vatX,      tableTop + 2)
-    .text('KAINA su PVM',      incX,      tableTop + 2);
+    .text('PAVADINIMAS',      itemX + 5, tableTop + 2, { width: qtyX - itemX - 10 })
+    .text('KIEKIS',           qtyX,      tableTop + 2)
+    .text('KAINA (be PVM)',   priceX,    tableTop + 2)
+    .text('PVM',              vatX,      tableTop + 2)
+    .text('KAINA su PVM',     incX,      tableTop + 2);
+
+  // Draw vertical lines between columns
+  doc
+    .strokeColor('#FFFFFF')
+    .lineWidth(0.5)
+    .moveTo(qtyX - 2, tableTop - 2).lineTo(qtyX - 2, tableTop + 18).stroke()
+    .moveTo(priceX - 2, tableTop - 2).lineTo(priceX - 2, tableTop + 18).stroke()
+    .moveTo(vatX - 2, tableTop - 2).lineTo(vatX - 2, tableTop + 18).stroke()
+    .moveTo(incX - 2, tableTop - 2).lineTo(incX - 2, tableTop + 18).stroke();
 
   // Reset fill color to black for rows
   doc.fillColor('#000').font('Reg').fontSize(10);
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 4) PRODUCT TABLE ROWS (with word‐wrap for “Pavadinimas”), and correct math
+  // 4) PRODUCT TABLE ROWS (with alternating shading and word‐wrap for “Pavadinimas”)
   // ────────────────────────────────────────────────────────────────────────────
   const colNameWidth = qtyX - itemX - 10; // width for “Pavadinimas” minus small padding
   let rowY = tableTop + 20;
@@ -158,18 +167,20 @@ async function createInvoicePdf({
     ? products
     : [{ name: String(products), quantity: 1, price: total_price }];
 
-  for (const p of items) {
+  // Iterate each row
+  for (let i = 0; i < items.length; i++) {
+    const p = items[i];
     const name      = p.name;
     const qty       = p.quantity;
-    const unitNet   = p.price;            // treat “price” as net (be PVM)
-    const lineNet   = qty * unitNet;      // net total for this row
-    const lineVat   = lineNet * 0.21;     // VAT (21% of net)
-    const lineGross = lineNet * 1.21;     // net + VAT = gross per row
+    const unitNet   = p.price;           
+    const lineNet   = qty * unitNet;     
+    const lineVat   = lineNet * 0.21;    
+    const lineGross = lineNet * 1.21;    
 
     // Format numbers with comma decimal:
-    const priceNetStr = unitNet.toFixed(2).replace('.', ',');   // unit net price
-    const vatStrAmt   = lineVat.toFixed(2).replace('.', ',');   // VAT amount
-    const grossStrAmt = lineGross.toFixed(2).replace('.', ','); // gross (net + VAT)
+    const priceNetStr = unitNet.toFixed(2).replace('.', ',');   
+    const vatStrAmt   = lineVat.toFixed(2).replace('.', ',');   
+    const grossStrAmt = lineGross.toFixed(2).replace('.', ','); 
 
     // 1) Measure how tall the wrapped name will be given our column width
     doc.font('Reg').fontSize(10);
@@ -177,22 +188,43 @@ async function createInvoicePdf({
       width: colNameWidth,
       align: 'left'
     });
-    // Add small vertical padding (4px) so text doesn’t touch borders
-    const rowHeight = nameHeight + 4;
+    const rowHeight = nameHeight + 6; // some vertical padding
 
-    // 2) Draw “Pavadinimas” inside its own cell, with wrap
+    // 2) Alternating row shade
+    if (i % 2 === 1) {
+      doc
+        .rect(itemX - 2, rowY - 2, 545 - itemX, rowHeight)
+        .fill('#F5F5F5')
+        .fillColor('#000'); // reset fill to black
+    }
+
+    // 3) Draw cell borders (light gray) around this row
+    doc
+      .strokeColor('#EEEEEE')
+      .lineWidth(0.5)
+      .moveTo(itemX - 2, rowY - 2).lineTo(545, rowY - 2).stroke()   // top border
+      .moveTo(itemX - 2, rowY + rowHeight - 2).lineTo(545, rowY + rowHeight - 2).stroke(); // bottom border
+
+    // Draw vertical dividers
+    doc
+      .moveTo(qtyX - 2, rowY - 2).lineTo(qtyX - 2, rowY + rowHeight - 2).stroke()
+      .moveTo(priceX - 2, rowY - 2).lineTo(priceX - 2, rowY + rowHeight - 2).stroke()
+      .moveTo(vatX - 2, rowY - 2).lineTo(vatX - 2, rowY + rowHeight - 2).stroke()
+      .moveTo(incX - 2, rowY - 2).lineTo(incX - 2, rowY + rowHeight - 2).stroke();
+
+    // 4) Draw “Pavadinimas” inside its own cell, with wrap
     doc.text(name, itemX + 5, rowY, {
       width: colNameWidth,
       align: 'left'
     });
 
-    // 3) Draw the remaining columns at the same rowY
+    // 5) Draw the remaining columns at the same rowY
     doc.text(qty.toString(),       qtyX,   rowY);
     doc.text(`€${priceNetStr}`,    priceX, rowY);
     doc.text(`€${vatStrAmt}`,      vatX,   rowY);
     doc.text(`€${grossStrAmt}`,    incX,   rowY);
 
-    // 4) Advance rowY by the (wrapped) row height
+    // 6) Advance rowY by the (wrapped) row height
     rowY += rowHeight;
   }
 
