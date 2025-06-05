@@ -56,11 +56,11 @@ async function createInvoicePdf({
   doc.registerFont('Reg',  robotoRegPath);
   doc.registerFont('Bold', robotoBoldPath);
 
-  // Calculate totals
+  // Calculate overall totals (for the bottom summary)
   const date     = new Date().toISOString().split('T')[0];
-  const priceExcl= +total_price / 1.21;
-  const vat      = priceExcl * 0.21;
-  console.log(`📄 Invoice calculations — date=${date}, priceExcl=${priceExcl.toFixed(2)}, VAT=${vat.toFixed(2)}`);
+  const overallNet = +total_price / 1.21;
+  const overallVat = overallNet * 0.21;
+  console.log(`📄 Invoice calculations — date=${date}, overallNet=${overallNet.toFixed(2)}, overallVat=${overallVat.toFixed(2)}`);
 
   // 🖼 Logo
   console.log('📄 Attempting to fetch logo...');
@@ -140,7 +140,7 @@ async function createInvoicePdf({
   doc.fillColor('#000').font('Reg').fontSize(10);
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 4) PRODUCT TABLE ROWS (with word‐wrap for “Pavadinimas”)  
+  // 4) PRODUCT TABLE ROWS (with word‐wrap for “Pavadinimas”), and correct math  
   // ────────────────────────────────────────────────────────────────────────────
   const colNameWidth = qtyX - itemX - 10; // width for “Pavadinimas” minus small padding
   let rowY = tableTop + 20;
@@ -151,19 +151,17 @@ async function createInvoicePdf({
     : [{ name: String(products), quantity: 1, price: total_price }];
 
   for (const p of items) {
-    const name      = p.name;
-    const qty       = p.quantity;
-    const price     = p.price;
-    const lineTotal = qty * price;
-    const lineVat   = lineTotal * 0.21;
-    const priceEx   = price;           // price (be PVM)
-    const vatAmt    = lineVat;         // VAT amount
-    const priceInc  = lineTotal;       // price including VAT
+    const name       = p.name;
+    const qty        = p.quantity;
+    const unitNet    = p.price;                     // treat “price” as net (be PVM)
+    const lineNet    = qty * unitNet;               // net total for this row
+    const lineVat    = lineNet * 0.21;              // VAT (21% of net)
+    const lineGross  = lineNet * 1.21;              // net + VAT = gross per row
 
     // Format numbers with comma decimal:
-    const priceStr   = priceEx.toFixed(2).replace('.', ',');
-    const vatStrAmt  = vatAmt.toFixed(2).replace('.', ',');
-    const priceIncStr= priceInc.toFixed(2).replace('.', ',');
+    const priceNetStr   = unitNet.toFixed(2).replace('.', ',');         // unit net price
+    const vatStrAmt     = lineVat.toFixed(2).replace('.', ',');         // VAT amount
+    const grossStrAmt   = lineGross.toFixed(2).replace('.', ',');       // gross (net + VAT)
 
     // 1) Measure how tall the wrapped name will be given our column width
     doc.font('Reg').fontSize(10);
@@ -181,10 +179,10 @@ async function createInvoicePdf({
     });
 
     // 3) Draw the remaining columns at the same rowY
-    doc.text(qty.toString(),         qtyX,    rowY);
-    doc.text(`€${priceStr}`,        priceX,  rowY);
-    doc.text(`€${vatStrAmt}`,        vatX,    rowY);
-    doc.text(`€${priceIncStr}`,      incX,    rowY);
+    doc.text(qty.toString(),           qtyX,     rowY);
+    doc.text(`€${priceNetStr}`,       priceX,   rowY);
+    doc.text(`€${vatStrAmt}`,          vatX,     rowY);
+    doc.text(`€${grossStrAmt}`,        incX,     rowY);
 
     // 4) Advance rowY by the (wrapped) row height
     rowY += rowHeight;
@@ -200,10 +198,10 @@ async function createInvoicePdf({
   doc
     .font('Reg').fillColor('#000')
     .text(`Kaina be PVM:`, 360, doc.y, { continued: true })
-    .text(`€${priceExcl.toFixed(2).replace('.', ',')}`, { align: 'right' });
+    .text(`€${overallNet.toFixed(2).replace('.', ',')}`, { align: 'right' });
   doc
     .text(`PVM (21%):`, 360, doc.y, { continued: true })
-    .text(`€${vat.toFixed(2).replace('.', ',')}`, { align: 'right' });
+    .text(`€${overallVat.toFixed(2).replace('.', ',')}`, { align: 'right' });
   doc
     .font('Bold').fillColor('#d81b60')
     .text(`Bendra suma:`, 360, doc.y, { continued: true })
@@ -221,89 +219,3 @@ async function createInvoicePdf({
     });
   });
 }
-
-module.exports = async (req, res) => {
-  console.log(`➡️ Incoming request: ${req.method} ${req.url}`);
-  if (req.method === 'OPTIONS') {
-    console.log('↩️ OPTIONS preflight');
-    res
-      .setHeader('Access-Control-Allow-Origin', '*')
-      .setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-      .setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
-  }
-  if (req.method !== 'POST') {
-    console.log('❌ Method not allowed');
-    return res.status(405).json({ error: 'Only POST requests allowed' });
-  }
-
-  console.log('📥 Parsing body:', req.body);
-  try {
-    const {
-      to,
-      customer_name,
-      customer_email,
-      phone,
-      shipping_address,
-      payment_reference,
-      products,
-      total_price,
-      invoice_number
-    } = req.body;
-
-    const parsedAddress = String(shipping_address || '');
-    console.log('📦 Generating PDF for:', { to, customer_name, payment_reference, total_price, invoice_number });
-
-    const pdfBuffer = await createInvoicePdf({
-      payment_reference,
-      customer_name,
-      parsedAddress,
-      customer_email,
-      phone,
-      products,
-      total_price,
-      invoice_number
-    });
-
-    console.log(`✉️ Preparing to send email to: ${to}`);
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.hostinger.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: 'info@beautybyella.lt',
-        pass: 'Benukas2222!'
-      }
-    });
-    console.log('🔑 SMTP transport configured');
-
-    const mailOptions = {
-      from: `"Beauty by Ella" <info@beautybyella.lt>`,
-      to,
-      subject: 'Jūsų užsakymas patvirtintas!',
-      html: `
-        <div style="font-family: sans-serif; font-size: 15px; color: #333;">
-          <img src="https://i.imgur.com/oFa7Bqt.jpeg" style="width:100px; border-radius:8px; margin-bottom:15px;" />
-          <p>Sveiki, <strong>${customer_name}</strong>,</p>
-          <p>Jūsų užsakymas buvo sėkmingai priimtas! Prisegame sąskaitą faktūrą PDF formatu.</p>
-          <p><strong>Sąskaitos numeris: ${invoice_number}</strong></p>
-          <p>Su meile,<br/><strong>Beauty by Ella</strong> 💖</p>
-        </div>
-      `,
-      attachments: [{
-        filename: 'invoice.pdf',
-        content: pdfBuffer,
-        contentType: 'application/pdf'
-      }]
-    };
-
-    console.log('✉️ Sending mail with options:', { to, subject: mailOptions.subject });
-    const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email sent:', info);
-
-    return res.status(200).json({ success: true, messageId: info.messageId });
-  } catch (err) {
-    console.error('❌ Email sending failed:', err);
-    return res.status(500).json({ error: err.message || 'Email send failed' });
-  }
-};
