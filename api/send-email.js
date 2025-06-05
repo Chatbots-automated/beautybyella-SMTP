@@ -123,12 +123,12 @@ async function createInvoicePdf({
   // ────────────────────────────────────────────────────────────────────────────
   const tableTop = doc.y;
 
-  // Adjusted column positions so that “KAINA su PVM” is wider:
+  // Adjusted column positions so that “KAINA su PVM” is guaranteed to fit:
   const itemX   = 50;   // “Pavadinimas” column start
-  const qtyX    = 240;  // “Kiekis” column start (moved left a bit)
-  const priceX  = 340;  // “Kaina (be PVM)” column start
-  const vatX    = 430;  // “PVM” column start
-  const incX    = 480;  // “Kaina su PVM” column start (moved further left)
+  const qtyX    = 240;  // “Kiekis” column start
+  const priceX  = 330;  // “Kaina (be PVM)” column start
+  const vatX    = 410;  // “PVM” column start
+  const incX    = 460;  // “Kaina su PVM” column start (moved left from 480 → 460)
 
   // Draw header background (brown), slightly taller (22px)
   doc
@@ -262,7 +262,6 @@ async function createInvoicePdf({
     });
   });
 }
-
 
 
 module.exports = async (req, res) => {
