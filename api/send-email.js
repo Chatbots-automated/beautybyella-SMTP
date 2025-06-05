@@ -8,23 +8,25 @@ const https       = require('https');
 function fetchBuffer(url) {
   return new Promise((resolve, reject) => {
     console.log(`🔗 fetchBuffer: GET ${url}`);
-    https.get(url, res => {
-      console.log(`🔗 fetchBuffer: statusCode=${res.statusCode} for ${url}`);
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        const buf = Buffer.concat(chunks);
-        console.log(`🔗 fetchBuffer: downloaded ${buf.length} bytes from ${url}`);
-        resolve(buf);
-      });
-      res.on('error', err => {
-        console.error(`❌ fetchBuffer error for ${url}:`, err);
+    https
+      .get(url, (res) => {
+        console.log(`🔗 fetchBuffer: statusCode=${res.statusCode} for ${url}`);
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          console.log(`🔗 fetchBuffer: downloaded ${buf.length} bytes from ${url}`);
+          resolve(buf);
+        });
+        res.on('error', (err) => {
+          console.error(`❌ fetchBuffer error for ${url}:`, err);
+          reject(err);
+        });
+      })
+      .on('error', (err) => {
+        console.error(`❌ fetchBuffer request error for ${url}:`, err);
         reject(err);
       });
-    }).on('error', err => {
-      console.error(`❌ fetchBuffer request error for ${url}:`, err);
-      reject(err);
-    });
   });
 }
 
@@ -49,15 +51,15 @@ async function createInvoicePdf({
 
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   const buffers = [];
-  doc.on('data', chunk => buffers.push(chunk));
+  doc.on('data', (chunk) => buffers.push(chunk));
   doc.on('end',   () => console.log('📄 createInvoicePdf: PDF stream ended'));
 
-  // Register embedded fonts
+  // Register embedded fonts (must exist under /fonts)
   doc.registerFont('Reg',  robotoRegPath);
   doc.registerFont('Bold', robotoBoldPath);
 
   // Calculate overall totals (for the bottom summary)
-  const date     = new Date().toISOString().split('T')[0];
+  const date       = new Date().toISOString().split('T')[0];
   const overallNet = +total_price / 1.21;
   const overallVat = overallNet * 0.21;
   console.log(`📄 Invoice calculations — date=${date}, overallNet=${overallNet.toFixed(2)}, overallVat=${overallVat.toFixed(2)}`);
@@ -78,13 +80,17 @@ async function createInvoicePdf({
   // 2) PDF CONTENT (all in Roboto!)
   // Heading (Lithuanian)
   doc
-    .font('Bold').fillColor('#d81b60').fontSize(20)
+    .font('Bold')
+    .fillColor('#d81b60')
+    .fontSize(20)
     .text('SĄSKAITA FAKTŪRA', { align: 'center' });
   doc.moveDown();
 
   // Invoice metadata (Lithuanian)
   doc
-    .font('Reg').fillColor('#000').fontSize(12)
+    .font('Reg')
+    .fillColor('#000')
+    .fontSize(12)
     .text(`Data: ${date}`, { continued: true })
     .text(`   Užsakymo Nr.: ${payment_reference}`)
     .text(`   Sąskaitos numeris: ${invoice_number}`);
@@ -92,7 +98,8 @@ async function createInvoicePdf({
 
   // Seller (Lithuanian)
   doc
-    .font('Bold').text('Pardavėjas:', { underline: true })
+    .font('Bold')
+    .text('Pardavėjas:', { underline: true })
     .font('Reg')
     .text('Beauty by Ella Ltd.')
     .text('Company ID: 305232614')
@@ -102,7 +109,8 @@ async function createInvoicePdf({
 
   // Buyer (Lithuanian)
   doc
-    .font('Bold').text('Pirkėjas:', { underline: true })
+    .font('Bold')
+    .text('Pirkėjas:', { underline: true })
     .font('Reg')
     .text(customer_name)
     .text(parsedAddress)
@@ -111,7 +119,7 @@ async function createInvoicePdf({
   doc.moveDown();
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 3) PRODUCT TABLE HEADER (Lithuanian)  
+  // 3) PRODUCT TABLE HEADER (Lithuanian)
   // ────────────────────────────────────────────────────────────────────────────
   const tableTop = doc.y;
   const itemX   = 50;   // Pavadinimas column start
@@ -122,7 +130,7 @@ async function createInvoicePdf({
 
   // Draw header background (brown)
   doc
-    .rect(itemX - 2, tableTop - 2, 545 - itemX, 20) // full width from itemX to right margin (≈545)
+    .rect(itemX - 2, tableTop - 2, 545 - itemX, 20) // from itemX to right margin (≈545)
     .fill('#8B4513');
 
   // Header text in white
@@ -132,7 +140,7 @@ async function createInvoicePdf({
     .fontSize(10)
     .text('PAVADINIMAS',       itemX + 5, tableTop + 2, { width: qtyX - itemX - 10 })
     .text('KIEKIS',            qtyX,      tableTop + 2)
-    .text('KAINA (be PVM)',     priceX,   tableTop + 2)
+    .text('KAINA (be PVM)',    priceX,    tableTop + 2)
     .text('PVM',               vatX,      tableTop + 2)
     .text('KAINA su PVM',      incX,      tableTop + 2);
 
@@ -140,28 +148,28 @@ async function createInvoicePdf({
   doc.fillColor('#000').font('Reg').fontSize(10);
 
   // ────────────────────────────────────────────────────────────────────────────
-  // 4) PRODUCT TABLE ROWS (with word‐wrap for “Pavadinimas”), and correct math  
+  // 4) PRODUCT TABLE ROWS (with word‐wrap for “Pavadinimas”), and correct math
   // ────────────────────────────────────────────────────────────────────────────
   const colNameWidth = qtyX - itemX - 10; // width for “Pavadinimas” minus small padding
   let rowY = tableTop + 20;
 
-  // If products is an array, iterate; otherwise fallback to single‐item logic
+  // If products is already an array, use it. Otherwise fallback to single‐item
   const items = Array.isArray(products)
     ? products
     : [{ name: String(products), quantity: 1, price: total_price }];
 
   for (const p of items) {
-    const name       = p.name;
-    const qty        = p.quantity;
-    const unitNet    = p.price;                     // treat “price” as net (be PVM)
-    const lineNet    = qty * unitNet;               // net total for this row
-    const lineVat    = lineNet * 0.21;              // VAT (21% of net)
-    const lineGross  = lineNet * 1.21;              // net + VAT = gross per row
+    const name      = p.name;
+    const qty       = p.quantity;
+    const unitNet   = p.price;            // treat “price” as net (be PVM)
+    const lineNet   = qty * unitNet;      // net total for this row
+    const lineVat   = lineNet * 0.21;     // VAT (21% of net)
+    const lineGross = lineNet * 1.21;     // net + VAT = gross per row
 
     // Format numbers with comma decimal:
-    const priceNetStr   = unitNet.toFixed(2).replace('.', ',');         // unit net price
-    const vatStrAmt     = lineVat.toFixed(2).replace('.', ',');         // VAT amount
-    const grossStrAmt   = lineGross.toFixed(2).replace('.', ',');       // gross (net + VAT)
+    const priceNetStr = unitNet.toFixed(2).replace('.', ',');   // unit net price
+    const vatStrAmt   = lineVat.toFixed(2).replace('.', ',');   // VAT amount
+    const grossStrAmt = lineGross.toFixed(2).replace('.', ','); // gross (net + VAT)
 
     // 1) Measure how tall the wrapped name will be given our column width
     doc.font('Reg').fontSize(10);
@@ -179,10 +187,10 @@ async function createInvoicePdf({
     });
 
     // 3) Draw the remaining columns at the same rowY
-    doc.text(qty.toString(),           qtyX,     rowY);
-    doc.text(`€${priceNetStr}`,       priceX,   rowY);
-    doc.text(`€${vatStrAmt}`,          vatX,     rowY);
-    doc.text(`€${grossStrAmt}`,        incX,     rowY);
+    doc.text(qty.toString(),       qtyX,   rowY);
+    doc.text(`€${priceNetStr}`,    priceX, rowY);
+    doc.text(`€${vatStrAmt}`,      vatX,   rowY);
+    doc.text(`€${grossStrAmt}`,    incX,   rowY);
 
     // 4) Advance rowY by the (wrapped) row height
     rowY += rowHeight;
@@ -196,14 +204,16 @@ async function createInvoicePdf({
   // ────────────────────────────────────────────────────────────────────────────
   doc.moveDown(1.5).fontSize(12);
   doc
-    .font('Reg').fillColor('#000')
+    .font('Reg')
+    .fillColor('#000')
     .text(`Kaina be PVM:`, 360, doc.y, { continued: true })
     .text(`€${overallNet.toFixed(2).replace('.', ',')}`, { align: 'right' });
   doc
     .text(`PVM (21%):`, 360, doc.y, { continued: true })
     .text(`€${overallVat.toFixed(2).replace('.', ',')}`, { align: 'right' });
   doc
-    .font('Bold').fillColor('#d81b60')
+    .font('Bold')
+    .fillColor('#d81b60')
     .text(`Bendra suma:`, 360, doc.y, { continued: true })
     .text(`€${(+total_price).toFixed(2).replace('.', ',')}`, { align: 'right' });
 
@@ -211,7 +221,7 @@ async function createInvoicePdf({
   doc.end();
 
   // Wait for PDF to finish then return buffer
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     doc.on('end', () => {
       const pdfBuffer = Buffer.concat(buffers);
       console.log(`📄 PDF generated, ${pdfBuffer.length} bytes`);
@@ -219,3 +229,93 @@ async function createInvoicePdf({
     });
   });
 }
+
+
+
+module.exports = async (req, res) => {
+  console.log(`➡️ Incoming request: ${req.method} ${req.url}`);
+  if (req.method === 'OPTIONS') {
+    console.log('↩️ OPTIONS preflight');
+    res
+      .setHeader('Access-Control-Allow-Origin', '*')
+      .setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+      .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(200).end();
+  }
+  if (req.method !== 'POST') {
+    console.log('❌ Method not allowed');
+    return res.status(405).json({ error: 'Only POST requests allowed' });
+  }
+
+  console.log('📥 Parsing body:', req.body);
+  try {
+    const {
+      to,
+      customer_name,
+      customer_email,
+      phone,
+      shipping_address,
+      payment_reference,
+      products,
+      total_price,
+      invoice_number
+    } = req.body;
+
+    const parsedAddress = String(shipping_address || '');
+    console.log('📦 Generating PDF for:', { to, customer_name, payment_reference, total_price, invoice_number });
+
+    const pdfBuffer = await createInvoicePdf({
+      payment_reference,
+      customer_name,
+      parsedAddress,
+      customer_email,
+      phone,
+      products,
+      total_price,
+      invoice_number
+    });
+
+    console.log(`✉️ Preparing to send email to: ${to}`);
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.hostinger.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: 'info@beautybyella.lt',
+        pass: 'Benukas2222!'
+      }
+    });
+    console.log('🔑 SMTP transport configured');
+
+    const mailOptions = {
+      from: `"Beauty by Ella" <info@beautybyella.lt>`,
+      to,
+      subject: 'Jūsų užsakymas patvirtintas!',
+      html: `
+        <div style="font-family: sans-serif; font-size: 15px; color: #333;">
+          <img src="https://i.imgur.com/oFa7Bqt.jpeg" style="width:100px; border-radius:8px; margin-bottom:15px;" />
+          <p>Sveiki, <strong>${customer_name}</strong>,</p>
+          <p>Jūsų užsakymas buvo sėkmingai priimtas! Prisegame sąskaitą faktūrą PDF formatu.</p>
+          <p><strong>Sąskaitos numeris: ${invoice_number}</strong></p>
+          <p>Su meile,<br/><strong>Beauty by Ella</strong> 💖</p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: 'invoice.pdf',
+          content: pdfBuffer,
+          contentType: 'application/pdf'
+        }
+      ]
+    };
+
+    console.log('✉️ Sending mail with options:', { to, subject: mailOptions.subject });
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent:', info);
+
+    return res.status(200).json({ success: true, messageId: info.messageId });
+  } catch (err) {
+    console.error('❌ Email sending failed:', err);
+    return res.status(500).json({ error: err.message || 'Email send failed' });
+  }
+};
