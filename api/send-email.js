@@ -101,7 +101,7 @@ async function createInvoicePdf({
     .font('Bold')
     .text('Pardavėjas:', { underline: true })
     .font('Reg')
-    .text('Beauty by Ella Ltd.')
+    .text('MB Stiklų keitimas automobiliams')
     .text('Company ID: 305232614')
     .text('VAT kodas: LT100017540118')
     .text('Giraitės g. 60A-2, Trakų r.');
