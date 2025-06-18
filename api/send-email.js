@@ -38,7 +38,7 @@ async function createInvoicePdf({
   phone,
   products,
   total_price,
-  invoice_number
+  invoice_number,       // this now must already be "EVA..." prefixed
 }) {
   console.log('📄 createInvoicePdf: start');
   console.log({ payment_reference, customer_name, customer_email, phone, total_price, products, invoice_number });
@@ -54,17 +54,17 @@ async function createInvoicePdf({
   doc.on('data', (chunk) => buffers.push(chunk));
   doc.on('end',   () => console.log('📄 createInvoicePdf: PDF stream ended'));
 
-  // Register embedded fonts (must exist under /fonts)
+  // Register embedded fonts
   doc.registerFont('Reg',  robotoRegPath);
   doc.registerFont('Bold', robotoBoldPath);
 
-  // Calculate overall totals (for the bottom summary)
+  // Compute totals
   const date       = new Date().toISOString().split('T')[0];
   const overallNet = +total_price / 1.21;
   const overallVat = overallNet * 0.21;
   console.log(`📄 Invoice calculations — date=${date}, overallNet=${overallNet.toFixed(2)}, overallVat=${overallVat.toFixed(2)}`);
 
-  // 🖼 Logo
+  // Logo
   console.log('📄 Attempting to fetch logo...');
   try {
     const logoBuffer = await fetchBuffer('https://i.imgur.com/oFa7Bqt.jpeg');
@@ -74,11 +74,9 @@ async function createInvoicePdf({
     console.warn('⚠️ Logo failed to load:', e.message);
   }
 
-  // Move down from logo
   doc.moveDown(3);
 
-  // 2) PDF CONTENT (all in Roboto!)
-  // Heading (Lithuanian)
+  // Title
   doc
     .font('Bold')
     .fillColor('#d81b60')
@@ -86,7 +84,7 @@ async function createInvoicePdf({
     .text('SĄSKAITA FAKTŪRA', { align: 'center' });
   doc.moveDown();
 
-  // Invoice metadata (Lithuanian)
+  // Metadata with prefixed invoice number
   doc
     .font('Reg')
     .fillColor('#000')
@@ -96,10 +94,9 @@ async function createInvoicePdf({
     .text(`   Sąskaitos numeris: ${invoice_number}`);
   doc.moveDown();
 
-  // Seller (Lithuanian)
+  // Seller
   doc
-    .font('Bold')
-    .text('Pardavėjas:', { underline: true })
+    .font('Bold').text('Pardavėjas:', { underline: true })
     .font('Reg')
     .text('MB Stiklų keitimas automobiliams')
     .text('Company ID: 305232614')
@@ -107,10 +104,9 @@ async function createInvoicePdf({
     .text('Giraitės g. 60A-2, Trakų r.');
   doc.moveDown();
 
-  // Buyer (Lithuanian)
+  // Buyer
   doc
-    .font('Bold')
-    .text('Pirkėjas:', { underline: true })
+    .font('Bold').text('Pirkėjas:', { underline: true })
     .font('Reg')
     .text(customer_name)
     .text(parsedAddress)
@@ -118,77 +114,60 @@ async function createInvoicePdf({
     .text(phone);
   doc.moveDown();
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // 3) PRODUCT TABLE HEADER (Lithuanian)
-  // ────────────────────────────────────────────────────────────────────────────
+  // PRODUCT TABLE
   const tableTop = doc.y;
+  const itemX   = 50, qtyX = 240, priceX = 330, vatX = 410, incX = 460;
 
-  // Adjusted column positions so that “KAINA su PVM” is guaranteed to fit:
-  const itemX   = 50;   // “Pavadinimas” column start
-  const qtyX    = 240;  // “Kiekis” column start
-  const priceX  = 330;  // “Kaina (be PVM)” column start
-  const vatX    = 410;  // “PVM” column start
-  const incX    = 460;  // “Kaina su PVM” column start (moved left from 480 → 460)
-
-  // Draw header background (brown), slightly taller (22px)
+  // Header
   doc
     .rect(itemX - 2, tableTop - 2, 545 - itemX, 22)
-    .fill('#8B4513');
-
-  // Header text in white
-  doc
+    .fill('#8B4513')
     .fillColor('#FFFFFF')
     .font('Bold')
     .fontSize(10)
-    .text('PAVADINIMAS',      itemX + 5, tableTop + 2, { width: qtyX - itemX - 10 })
-    .text('KIEKIS',           qtyX + 5,  tableTop + 2)
-    .text('KAINA (be PVM)',   priceX + 5, tableTop + 2)
-    .text('PVM',              vatX + 5,   tableTop + 2)
-    .text('KAINA su PVM',     incX + 5,   tableTop + 2);
+    .text('PAVADINIMAS', itemX + 5, tableTop + 2, { width: qtyX - itemX - 10 })
+    .text('KIEKIS',     qtyX + 5,  tableTop + 2)
+    .text('KAINA (be PVM)', priceX + 5, tableTop + 2)
+    .text('PVM',        vatX + 5,   tableTop + 2)
+    .text('KAINA su PVM', incX + 5,  tableTop + 2);
 
-  // Draw vertical lines between columns (white)
+  // White separators
   doc
-    .strokeColor('#FFFFFF')
-    .lineWidth(0.5)
+    .strokeColor('#FFFFFF').lineWidth(0.5)
     .moveTo(qtyX - 2, tableTop - 2).lineTo(qtyX - 2, tableTop + 20).stroke()
     .moveTo(priceX - 2, tableTop - 2).lineTo(priceX - 2, tableTop + 20).stroke()
     .moveTo(vatX - 2, tableTop - 2).lineTo(vatX - 2, tableTop + 20).stroke()
     .moveTo(incX - 2, tableTop - 2).lineTo(incX - 2, tableTop + 20).stroke();
 
-  // Reset fill color to black for rows
   doc.fillColor('#000').font('Reg').fontSize(10);
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // 4) PRODUCT TABLE ROWS (alternating shade + word-wrap for “Pavadinimas”)
-  // ────────────────────────────────────────────────────────────────────────────
-  const colNameWidth = qtyX - itemX - 10;
+  // Rows
   let rowY = tableTop + 22;
-
   const items = Array.isArray(products)
     ? products
     : [{ name: String(products), quantity: 1, price: total_price }];
 
   for (let i = 0; i < items.length; i++) {
-    const p = items[i];
-    const name      = p.name;
-    const qty       = p.quantity;
-    const unitNet   = p.price;
-    const lineNet   = qty * unitNet;
-    const lineVat   = lineNet * 0.21;
-    const lineGross = lineNet * 1.21;
+    const { name, quantity: qty, price: unitNet } = items[i];
+    const lineNet  = qty * unitNet;
+    const lineVat  = lineNet * 0.21;
+    const lineGross= lineNet * 1.21;
 
     const priceNetStr = unitNet.toFixed(2).replace('.', ',');
     const vatStrAmt   = lineVat.toFixed(2).replace('.', ',');
     const grossStrAmt = lineGross.toFixed(2).replace('.', ',');
 
+    // Measure wrap height
     doc.font('Reg').fontSize(10);
-    const nameHeight = doc.heightOfString(name, { width: colNameWidth, align: 'left' });
-    const rowHeight = nameHeight + 6;
+    const nameHeight = doc.heightOfString(name, { width: qtyX - itemX - 10 });
+    const rowHeight  = nameHeight + 6;
 
+    // Shade alternate
     if (i % 2 === 1) {
       doc.rect(itemX - 2, rowY - 2, 545 - itemX, rowHeight).fill('#F5F5F5').fillColor('#000');
     }
 
+    // Borders
     doc
       .strokeColor('#DDDDDD').lineWidth(0.5)
       .moveTo(itemX - 2, rowY - 2).lineTo(545, rowY - 2).stroke()
@@ -198,20 +177,19 @@ async function createInvoicePdf({
       .moveTo(vatX - 2, rowY - 2).lineTo(vatX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(incX - 2, rowY - 2).lineTo(incX - 2, rowY + rowHeight - 2).stroke();
 
-    doc.text(name,        itemX + 5, rowY, { width: colNameWidth, align: 'left' });
-    doc.text(qty.toString(),       qtyX + 5,   rowY);
-    doc.text(`€${priceNetStr}`,    priceX + 5, rowY);
-    doc.text(`€${vatStrAmt}`,      vatX + 5,   rowY);
-    doc.text(`€${grossStrAmt}`,    incX + 5,   rowY);
+    // Data
+    doc.text(name, itemX + 5, rowY, { width: qtyX - itemX - 10 });
+    doc.text(qty.toString(), qtyX + 5, rowY);
+    doc.text(`€${priceNetStr}`, priceX + 5, rowY);
+    doc.text(`€${vatStrAmt}`,   vatX + 5,   rowY);
+    doc.text(`€${grossStrAmt}`, incX + 5,   rowY);
 
     rowY += rowHeight;
   }
 
   doc.y = rowY + 10;
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // 5) TOTALS (Lithuanian)
-  // ────────────────────────────────────────────────────────────────────────────
+  // Totals
   doc.moveDown(1.5).fontSize(12);
   doc
     .font('Reg').fillColor('#000')
@@ -266,11 +244,17 @@ module.exports = async (req, res) => {
       invoice_number
     } = req.body;
 
-    // Prefix invoice number with EVA
+    // Prefix the invoice number here
     const prefixedInvoiceNumber = `EVA${invoice_number}`;
 
     const parsedAddress = String(shipping_address || '');
-    console.log('📦 Generating PDF for:', { to, customer_name, payment_reference, total_price, invoice_number: prefixedInvoiceNumber });
+    console.log('📦 Generating PDF for:', {
+      to,
+      customer_name,
+      payment_reference,
+      total_price,
+      invoice_number: prefixedInvoiceNumber
+    });
 
     const pdfBuffer = await createInvoicePdf({
       payment_reference,
@@ -280,7 +264,7 @@ module.exports = async (req, res) => {
       phone,
       products,
       total_price,
-      invoice_number: prefixedInvoiceNumber
+      invoice_number: prefixedInvoiceNumber   // pass the EVA… number in
     });
 
     console.log(`✉️ Preparing to send email to: ${to}`);
