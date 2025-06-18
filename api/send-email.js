@@ -132,7 +132,7 @@ async function createInvoicePdf({
 
   // Draw header background (brown), slightly taller (22px)
   doc
-    .rect(itemX - 2, tableTop - 2, 545 - itemX, 22) // from itemX to right margin (~545)
+    .rect(itemX - 2, tableTop - 2, 545 - itemX, 22)
     .fill('#8B4513');
 
   // Header text in white
@@ -161,10 +161,9 @@ async function createInvoicePdf({
   // ────────────────────────────────────────────────────────────────────────────
   // 4) PRODUCT TABLE ROWS (alternating shade + word-wrap for “Pavadinimas”)
   // ────────────────────────────────────────────────────────────────────────────
-  const colNameWidth = qtyX - itemX - 10; // width for “Pavadinimas” minus small padding
-  let rowY = tableTop + 22;              // start right below header
+  const colNameWidth = qtyX - itemX - 10;
+  let rowY = tableTop + 22;
 
-  // If products is already an array, use it. Otherwise fallback to single‐item
   const items = Array.isArray(products)
     ? products
     : [{ name: String(products), quantity: 1, price: total_price }];
@@ -173,64 +172,41 @@ async function createInvoicePdf({
     const p = items[i];
     const name      = p.name;
     const qty       = p.quantity;
-    const unitNet   = p.price;            // treat “price” as net (be PVM)
-    const lineNet   = qty * unitNet;      // net total for this row
-    const lineVat   = lineNet * 0.21;     // VAT (21% of net)
-    const lineGross = lineNet * 1.21;     // net + VAT = gross per row
+    const unitNet   = p.price;
+    const lineNet   = qty * unitNet;
+    const lineVat   = lineNet * 0.21;
+    const lineGross = lineNet * 1.21;
 
-    // Format numbers with comma decimal:
     const priceNetStr = unitNet.toFixed(2).replace('.', ',');
     const vatStrAmt   = lineVat.toFixed(2).replace('.', ',');
     const grossStrAmt = lineGross.toFixed(2).replace('.', ',');
 
-    // 1) Measure how tall the wrapped name will be given our column width
     doc.font('Reg').fontSize(10);
-    const nameHeight = doc.heightOfString(name, {
-      width: colNameWidth,
-      align: 'left'
-    });
-    // Add small vertical padding (6px) so text doesn’t touch borders
+    const nameHeight = doc.heightOfString(name, { width: colNameWidth, align: 'left' });
     const rowHeight = nameHeight + 6;
 
-    // 2) Alternating row shade
     if (i % 2 === 1) {
-      doc
-        .rect(itemX - 2, rowY - 2, 545 - itemX, rowHeight)
-        .fill('#F5F5F5')
-        .fillColor('#000'); // reset fill to black
+      doc.rect(itemX - 2, rowY - 2, 545 - itemX, rowHeight).fill('#F5F5F5').fillColor('#000');
     }
 
-    // 3) Draw horizontal borders (light gray) above and below this row
     doc
-      .strokeColor('#DDDDDD')
-      .lineWidth(0.5)
-      .moveTo(itemX - 2, rowY - 2).lineTo(545, rowY - 2).stroke()   // top
-      .moveTo(itemX - 2, rowY + rowHeight - 2).lineTo(545, rowY + rowHeight - 2).stroke(); // bottom
-
-    // Draw vertical dividers between columns
-    doc
+      .strokeColor('#DDDDDD').lineWidth(0.5)
+      .moveTo(itemX - 2, rowY - 2).lineTo(545, rowY - 2).stroke()
+      .moveTo(itemX - 2, rowY + rowHeight - 2).lineTo(545, rowY + rowHeight - 2).stroke()
       .moveTo(qtyX - 2, rowY - 2).lineTo(qtyX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(priceX - 2, rowY - 2).lineTo(priceX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(vatX - 2, rowY - 2).lineTo(vatX - 2, rowY + rowHeight - 2).stroke()
       .moveTo(incX - 2, rowY - 2).lineTo(incX - 2, rowY + rowHeight - 2).stroke();
 
-    // 4) Draw name with wrap in its own cell
-    doc.text(name, itemX + 5, rowY, {
-      width: colNameWidth,
-      align: 'left'
-    });
+    doc.text(name,        itemX + 5, rowY, { width: colNameWidth, align: 'left' });
+    doc.text(qty.toString(),       qtyX + 5,   rowY);
+    doc.text(`€${priceNetStr}`,    priceX + 5, rowY);
+    doc.text(`€${vatStrAmt}`,      vatX + 5,   rowY);
+    doc.text(`€${grossStrAmt}`,    incX + 5,   rowY);
 
-    // 5) Draw the other columns at the same rowY
-    doc.text(qty.toString(),          qtyX + 5,   rowY);
-    doc.text(`€${priceNetStr}`,       priceX + 5, rowY);
-    doc.text(`€${vatStrAmt}`,         vatX + 5,   rowY);
-    doc.text(`€${grossStrAmt}`,       incX + 5,   rowY);
-
-    // 6) Advance rowY by the rowHeight
     rowY += rowHeight;
   }
 
-  // Move below the last row before totals
   doc.y = rowY + 10;
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -238,16 +214,14 @@ async function createInvoicePdf({
   // ────────────────────────────────────────────────────────────────────────────
   doc.moveDown(1.5).fontSize(12);
   doc
-    .font('Reg')
-    .fillColor('#000')
+    .font('Reg').fillColor('#000')
     .text(`Kaina be PVM:`, 360, doc.y, { continued: true })
     .text(`€${overallNet.toFixed(2).replace('.', ',')}`, { align: 'right' });
   doc
     .text(`PVM (21%):`, 360, doc.y, { continued: true })
     .text(`€${overallVat.toFixed(2).replace('.', ',')}`, { align: 'right' });
   doc
-    .font('Bold')
-    .fillColor('#d81b60')
+    .font('Bold').fillColor('#d81b60')
     .text(`Bendra suma:`, 360, doc.y, { continued: true })
     .text(`€${(+total_price).toFixed(2).replace('.', ',')}`, { align: 'right' });
 
@@ -262,7 +236,6 @@ async function createInvoicePdf({
     });
   });
 }
-
 
 module.exports = async (req, res) => {
   console.log(`➡️ Incoming request: ${req.method} ${req.url}`);
@@ -281,7 +254,7 @@ module.exports = async (req, res) => {
 
   console.log('📥 Parsing body:', req.body);
   try {
-    const {
+    let {
       to,
       customer_name,
       customer_email,
@@ -293,8 +266,11 @@ module.exports = async (req, res) => {
       invoice_number
     } = req.body;
 
+    // Prefix invoice number with EVA
+    const prefixedInvoiceNumber = `EVA${invoice_number}`;
+
     const parsedAddress = String(shipping_address || '');
-    console.log('📦 Generating PDF for:', { to, customer_name, payment_reference, total_price, invoice_number });
+    console.log('📦 Generating PDF for:', { to, customer_name, payment_reference, total_price, invoice_number: prefixedInvoiceNumber });
 
     const pdfBuffer = await createInvoicePdf({
       payment_reference,
@@ -304,7 +280,7 @@ module.exports = async (req, res) => {
       phone,
       products,
       total_price,
-      invoice_number
+      invoice_number: prefixedInvoiceNumber
     });
 
     console.log(`✉️ Preparing to send email to: ${to}`);
@@ -328,7 +304,7 @@ module.exports = async (req, res) => {
           <img src="https://i.imgur.com/oFa7Bqt.jpeg" style="width:100px; border-radius:8px; margin-bottom:15px;" />
           <p>Sveiki, <strong>${customer_name}</strong>,</p>
           <p>Jūsų užsakymas buvo sėkmingai priimtas! Prisegame sąskaitą faktūrą PDF formatu.</p>
-          <p><strong>Sąskaitos numeris: ${invoice_number}</strong></p>
+          <p><strong>Sąskaitos numeris: ${prefixedInvoiceNumber}</strong></p>
           <p>Su meile,<br/><strong>Beauty by Ella</strong> 💖</p>
         </div>
       `,
