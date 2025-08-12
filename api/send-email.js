@@ -81,7 +81,7 @@ async function createInvoicePdf({
     .font('Bold')
     .fillColor('#d81b60')
     .fontSize(20)
-    .text('SĄSKAITA FAKTŪRA', { align: 'center' });
+    .text('PVM SĄSKAITA FAKTŪRA', { align: 'center' });
   doc.moveDown();
 
   // Metadata with prefixed invoice number
