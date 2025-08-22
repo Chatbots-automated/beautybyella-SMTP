@@ -79,7 +79,7 @@ export default async function handler(req, res) {
 
       <h3 style="margin:18px 0 6px">Produktai</h3>
       <div class="note" style="margin-bottom:6px">
-        Kaina įvedama <strong>be PVM</strong> (už vienetą). PVM 21% bus paskaičiuota automatiškai.
+        Kaina įvedama <strong>su PVM</strong> (už vienetą). Sistema tiksliai skaičiuoja centais.
       </div>
 
       <table id="tbl">
@@ -87,8 +87,8 @@ export default async function handler(req, res) {
           <tr>
             <th style="width:46%">Pavadinimas</th>
             <th style="width:14%">Kiekis</th>
-            <th style="width:20%">Kaina (be PVM)</th>
-            <th style="width:20%;text-align:right">Suma su PVM</th>
+            <th style="width:20%">Kaina (su PVM, vnt.)</th>
+            <th style="width:20%;text-align:right">Eilutės suma (su PVM)</th>
           </tr>
         </thead>
         <tbody id="body"></tbody>
@@ -118,27 +118,32 @@ export default async function handler(req, res) {
 
   <script>
     (function(){
-      var VAT_RATE = 0.21;
+      var VAT_RATE = 0.21;         // 21% PVM
       var tbody = document.getElementById('body');
       var addBtn = document.getElementById('add');
       var form = document.getElementById('f');
       var statusEl = document.getElementById('status');
       var submitBtn = document.getElementById('submitBtn');
 
-      function euro(n){ n = Number(n)||0; return '€' + n.toFixed(2).replace('.', ','); }
+      function parseNum(v){
+        // supports comma or dot
+        return Number(String(v).replace(',', '.')) || 0;
+      }
+      function toCents(v){ return Math.round(parseNum(v) * 100); }
+      function euroC(c){ return '€' + (c/100).toFixed(2).replace('.', ','); }
 
-      function makeRow(name, qty, price){
+      function makeRow(name, qty, priceGross){
         var tr = document.createElement('tr');
         tr.innerHTML =
           '<td><input class="input n" placeholder="Prekės pavadinimas" value="'+(name||'')+'"/></td>'+
           '<td><input class="input q" type="number" min="1" step="1" value="'+(qty||1)+'"/></td>'+
-          '<td><input class="input p" type="number" min="0" step="0.01" value="'+(price||0)+'"/></td>'+
+          '<td><input class="input pg" type="number" min="0" step="0.01" value="'+(priceGross||0)+'"/></td>'+
           '<td style="text-align:right;white-space:nowrap"><span class="sum">€0,00</span> '+
             '<button type="button" class="row-btn">Pašalinti</button></td>';
         tbody.appendChild(tr);
         tr.querySelector('.n').addEventListener('input', recalc);
         tr.querySelector('.q').addEventListener('input', recalc);
-        tr.querySelector('.p').addEventListener('input', recalc);
+        tr.querySelector('.pg').addEventListener('input', recalc);
         tr.querySelector('.row-btn').addEventListener('click', function(){
           if (tbody.children.length > 1) { tr.remove(); recalc(); }
         });
@@ -147,20 +152,22 @@ export default async function handler(req, res) {
 
       function recalc(){
         var rows = tbody.querySelectorAll('tr');
-        var net=0, vat=0, gross=0;
+        var grossC = 0;
         rows.forEach(function(tr){
-          var q = Number(tr.querySelector('.q').value) || 0;
-          var p = Number(tr.querySelector('.p').value) || 0; // unit NET
-          var rowNet = q * p;
-          var rowGross = rowNet * (1 + VAT_RATE);
-          tr.querySelector('.sum').textContent = euro(rowGross);
-          net += rowNet;
+          var q = Math.max(0, Math.floor(parseNum(tr.querySelector('.q').value)));
+          var pgC = toCents(tr.querySelector('.pg').value); // unit gross in cents
+          var rowGrossC = q * pgC;
+          tr.querySelector('.sum').textContent = euroC(rowGrossC);
+          grossC += rowGrossC;
         });
-        vat = net * VAT_RATE;
-        gross = net + vat;
-        document.getElementById('tNet').textContent = euro(net);
-        document.getElementById('tVat').textContent = euro(vat);
-        document.getElementById('tGross').textContent = euro(gross);
+
+        // Totals in cents -> exact
+        var netC = Math.round(grossC * 100 / 121);  // net = gross / 1.21
+        var vatC = grossC - netC;
+
+        document.getElementById('tNet').textContent   = euroC(netC);
+        document.getElementById('tVat').textContent   = euroC(vatC);
+        document.getElementById('tGross').textContent = euroC(grossC);
       }
 
       addBtn.addEventListener('click', function(){ makeRow('',1,0); });
@@ -183,25 +190,32 @@ export default async function handler(req, res) {
           return;
         }
 
-        // Build products + totals
+        // Build products (convert unit GROSS -> unit NET for the API)
         var products = [];
         var rows = tbody.querySelectorAll('tr');
-        var net = 0;
+        var grossC = 0;
         rows.forEach(function(tr){
           var name = tr.querySelector('.n').value.trim();
-          var qty  = Number(tr.querySelector('.q').value) || 0;
-          var price= Number(tr.querySelector('.p').value) || 0; // unit NET
-          if (name && qty > 0 && price >= 0) {
-            products.push({ name: name, quantity: qty, price: price });
-            net += qty * price;
+          var qty  = Math.max(0, Math.floor(parseNum(tr.querySelector('.q').value)));
+          var unitGrossC = toCents(tr.querySelector('.pg').value);
+          if (name && qty > 0 && unitGrossC >= 0) {
+            var unitNetC = Math.round(unitGrossC * 100 / 121);   // exact 21% rule
+            products.push({
+              name: name,
+              quantity: qty,
+              price: unitNetC / 100   // API expects unit NET (€)
+            });
+            grossC += qty * unitGrossC;
           }
         });
+
         if (products.length === 0) {
           statusEl.textContent = '❌ Pridėkite bent vieną produktą.';
           statusEl.className = 'err';
           return;
         }
-        var total_price = Number((net * (1 + VAT_RATE)).toFixed(2)); // GROSS
+
+        var total_price = (grossC / 100); // exact gross €
 
         var payload = {
           to: customer_email,
@@ -212,7 +226,7 @@ export default async function handler(req, res) {
           payment_reference: payment_reference,
           invoice_number: invoice_number, // server adds EVA
           products: products,
-          total_price: total_price
+          total_price: Number(total_price.toFixed(2))
         };
 
         submitBtn.disabled = true;
