@@ -98,12 +98,20 @@ export default async function handler(req, res) {
         <button class="btn" type="button" id="add">+ Pridėti eilutę</button>
       </div>
 
+      <!-- Manual grand total (GROSS) -->
+      <div style="margin-top:12px">
+        <div class="label">Bendra suma (su PVM) — jei norite nustatyti ranka (nebūtina)</div>
+        <input class="input" id="grand_gross" type="number" min="0" step="0.01" placeholder="pvz., 7.00" />
+        <div class="note">Jei įvesite, sistema sulygins eilutes iki šios sumos (pridės koregavimo eilutę išsiunčiant).</div>
+      </div>
+
       <section style="display:flex;justify-content:flex-end">
         <div class="totals">
           <div class="row"><div>Tarpinė suma (be PVM)</div><div id="tNet" style="font-weight:600">€0,00</div></div>
           <div class="row"><div>PVM (21%)</div><div id="tVat" style="font-weight:600">€0,00</div></div>
           <div style="border-top:1px solid #eee;margin:10px 0"></div>
           <div class="row"><div class="brand">Bendra suma (su PVM)</div><div id="tGross" class="brand">€0,00</div></div>
+          <div id="overrideInfo" class="note" style="margin-top:6px"></div>
         </div>
       </section>
 
@@ -118,17 +126,16 @@ export default async function handler(req, res) {
 
   <script>
     (function(){
-      var VAT_RATE = 0.21;         // 21% PVM
+      var VAT_RATE = 0.21; // 21%
       var tbody = document.getElementById('body');
       var addBtn = document.getElementById('add');
       var form = document.getElementById('f');
       var statusEl = document.getElementById('status');
       var submitBtn = document.getElementById('submitBtn');
+      var grandInput = document.getElementById('grand_gross');
+      var overrideInfo = document.getElementById('overrideInfo');
 
-      function parseNum(v){
-        // supports comma or dot
-        return Number(String(v).replace(',', '.')) || 0;
-      }
+      function parseNum(v){ return Number(String(v).replace(',', '.')) || 0; }
       function toCents(v){ return Math.round(parseNum(v) * 100); }
       function euroC(c){ return '€' + (c/100).toFixed(2).replace('.', ','); }
 
@@ -152,25 +159,42 @@ export default async function handler(req, res) {
 
       function recalc(){
         var rows = tbody.querySelectorAll('tr');
-        var grossC = 0;
+        var rowsGrossC = 0;
+
         rows.forEach(function(tr){
           var q = Math.max(0, Math.floor(parseNum(tr.querySelector('.q').value)));
-          var pgC = toCents(tr.querySelector('.pg').value); // unit gross in cents
+          var pgC = toCents(tr.querySelector('.pg').value); // unit gross cents
           var rowGrossC = q * pgC;
           tr.querySelector('.sum').textContent = euroC(rowGrossC);
-          grossC += rowGrossC;
+          rowsGrossC += rowGrossC;
         });
 
-        // Totals in cents -> exact
-        var netC = Math.round(grossC * 100 / 121);  // net = gross / 1.21
-        var vatC = grossC - netC;
+        var manualGrossC = toCents(grandInput.value);
+        var finalGrossC = manualGrossC > 0 ? manualGrossC : rowsGrossC;
+
+        // Totals from finalGrossC (exact)
+        var netC = Math.round(finalGrossC * 100 / 121);
+        var vatC = finalGrossC - netC;
 
         document.getElementById('tNet').textContent   = euroC(netC);
         document.getElementById('tVat').textContent   = euroC(vatC);
-        document.getElementById('tGross').textContent = euroC(grossC);
+        document.getElementById('tGross').textContent = euroC(finalGrossC);
+
+        if (manualGrossC > 0) {
+          var deltaC = manualGrossC - rowsGrossC;
+          var sign = deltaC === 0 ? '' : (deltaC > 0 ? '+' : '−');
+          var abs = euroC(Math.abs(deltaC));
+          overrideInfo.textContent =
+            deltaC === 0
+              ? 'Naudojama rankinė bendra suma. Eilučių suma jau sutampa.'
+              : 'Naudojama rankinė bendra suma. Skirtumas nuo eilučių: ' + sign.replace('−','-') + abs + ' (bus pridėta koregavimo eilutė).';
+        } else {
+          overrideInfo.textContent = '';
+        }
       }
 
       addBtn.addEventListener('click', function(){ makeRow('',1,0); });
+      grandInput.addEventListener('input', recalc);
 
       form.addEventListener('submit', async function(e){
         e.preventDefault();
@@ -190,10 +214,11 @@ export default async function handler(req, res) {
           return;
         }
 
-        // Build products (convert unit GROSS -> unit NET for the API)
+        // Build rows
         var products = [];
         var rows = tbody.querySelectorAll('tr');
-        var grossC = 0;
+        var rowsGrossC = 0;
+
         rows.forEach(function(tr){
           var name = tr.querySelector('.n').value.trim();
           var qty  = Math.max(0, Math.floor(parseNum(tr.querySelector('.q').value)));
@@ -205,7 +230,7 @@ export default async function handler(req, res) {
               quantity: qty,
               price: unitNetC / 100   // API expects unit NET (€)
             });
-            grossC += qty * unitGrossC;
+            rowsGrossC += qty * unitGrossC;
           }
         });
 
@@ -215,7 +240,29 @@ export default async function handler(req, res) {
           return;
         }
 
-        var total_price = (grossC / 100); // exact gross €
+        // Manual override
+        var manualGrossC = toCents(grandInput.value);
+        var finalGrossC = manualGrossC > 0 ? manualGrossC : rowsGrossC;
+
+        // If manual total was provided and differs, add a correction line so PDF rows sum == final total
+        if (manualGrossC > 0) {
+          var deltaC = manualGrossC - rowsGrossC;
+          if (deltaC !== 0) {
+            // net cents for correction so that ROUND(net*1.21) == deltaC
+            var corrNetC = Math.round(deltaC * 100 / 121);
+            if (corrNetC === 0) {
+              // if delta is 1 cent gross, make it +/-0.01 net (which rounds to 0.01 gross)
+              corrNetC = deltaC > 0 ? 1 : -1;
+            }
+            products.push({
+              name: 'Koregavimas (rankinė bendra suma)',
+              quantity: 1,
+              price: corrNetC / 100
+            });
+          }
+        }
+
+        var total_price = Number((finalGrossC / 100).toFixed(2)); // exact gross €
 
         var payload = {
           to: customer_email,
@@ -226,7 +273,7 @@ export default async function handler(req, res) {
           payment_reference: payment_reference,
           invoice_number: invoice_number, // server adds EVA
           products: products,
-          total_price: Number(total_price.toFixed(2))
+          total_price: total_price
         };
 
         submitBtn.disabled = true;
